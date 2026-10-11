@@ -18,6 +18,7 @@ enum class MeshType{MESH, SPHERE, CUBE, PYRAMID};
 struct AgentComponent{
     AgentMode Mode = AgentMode::NONE;
     std::string AgentModule = "None";
+    std::string ScriptPath = "";
 };
 
 struct MeshComponent{

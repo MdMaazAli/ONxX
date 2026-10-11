@@ -7,6 +7,71 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <fstream>
+
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>
+#endif
+#include <cstdlib>
+#include <filesystem>
+#include <iostream>
+
+// < --------------- SCRIPT ATTACHER CROSS PLATFORM CHECKER --------------- >
+void LaunchScriptInEditor(const std::string& relativePath) {
+    if (relativePath.empty()) return;
+
+    // Resolve relative path to absolute so the OS knows exactly where it is
+    std::filesystem::path fullPath = std::filesystem::absolute(relativePath);
+    std::string pathStr = fullPath.string();
+
+#if defined(_WIN32)
+    // Try opening with the computer's registered "edit" application (VS Code, PyCharm, Notepad++, etc.)
+    HINSTANCE result = ShellExecuteA(NULL, "edit", pathStr.c_str(), NULL, NULL, SW_SHOWNORMAL);
+    
+    // If no "edit" action is registered (error code <= 32), try the standard "open"
+    if ((INT_PTR)result <= 32) {
+        result = ShellExecuteA(NULL, "open", pathStr.c_str(), NULL, NULL, SW_SHOWNORMAL);
+    }
+    
+    // Guaranteed fallback: If Windows has zero editor associated with .py, open with notepad
+    if ((INT_PTR)result <= 32) {
+        std::string fallbackCmd = "notepad.exe \"" + pathStr + "\"";
+        system(fallbackCmd.c_str());
+    }
+#elif defined(__APPLE__)
+    // macOS default text editor
+    std::string cmd = "open -t \"" + pathStr + "\"";
+    system(cmd.c_str());
+#else
+    // Linux default desktop text editor
+    std::string cmd = "xdg-open \"" + pathStr + "\" &";
+    system(cmd.c_str());
+#endif
+}
+
+//  < ---------- PYTHON SCRIPT FOLDER CHECK ---------- >
+void EnsureScriptExists(const std::string& relativePath, int entityID) {
+    std::filesystem::path p(relativePath);
+    
+    // Create the python_api directory if it doesn't exist on this machine
+    if (p.has_parent_path()) {
+        std::filesystem::create_directories(p.parent_path());
+    }
+    // Create the starter script template
+    if (!std::filesystem::exists(p)) {
+        std::ofstream file(p);
+        if (file.is_open()) {
+            file << "# Auto-generated Agent Script for Entity [" << entityID << "]\n";
+            file << "import sys\nimport os\n\n";
+            file << "def step(obs):\n";
+            file << "    # Action: 0 = Move Forward, 1 = Jump, 2 = Move Sideways\n";
+            file << "    return 0\n";
+            file.close();
+        }
+    }
+}
+
 UIManager::UIManager() : m_firstFrame(true), m_metalTexture(0), m_state(EngineState::EDIT_MODE) {}
 
 UIManager::~UIManager() {}
@@ -16,7 +81,7 @@ void UIManager::GenerateProceduralMetalTexture() {
     int height = 512;
     std::vector<unsigned char> data(width * height * 4);
     
-    // 1. Generate base noise
+    // Generate base noise
     for (int i = 0; i < width * height; ++i) {
         unsigned char noise = 40 + (rand() % 25); // Dark grey noise
         data[i*4 + 0] = noise;
@@ -218,7 +283,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     console_draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, ImVec2(center_pos.x + 3.0f, center_pos.y + 3.0f), IM_COL32(100, 110, 100, 80), watermark);
     // Deep shadow (simulates the depth of the stamp)
     console_draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, center_pos, IM_COL32(15, 20, 15, 200), watermark);
-    // ---------------------------
+    // --------------------------------------------------------------------------------------------------------------------------
     
     ImGui::Text("Initializing core modules...");
     ImGui::Text("ZMQ Listener active on port 5555.");
@@ -241,16 +306,19 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             sprintf(label, "[%zu] Entity (Empty)", i);
         }
         
-        // 1. Highlight the text if its ID matches the activeEntityID from main.cpp
+        // Highlight the text if its ID matches the activeEntityID from main.cpp
         bool isSelected = (activeEntityID == (int)i); 
         
-        // 2. If the user clicks this text, it returns TRUE for exactly 1 frame
+        // If the user clicks this text, it returns TRUE for exactly 1 frame
         if (ImGui::Selectable(label, isSelected)) {
             m_newlySelectedHierarchyID = (int)i; // Save this click to send to main.cpp!
         }
         
-        // --- [NEW] Right-Click Context Menu for Hierarchy ---
+        // < ----------- Right Click Context Menu for Hierarchy ----------- >
         if (ImGui::BeginPopupContextItem("HierarchyEntityMenu")) {
+            ImGui::Text("Entity [%zu]", i);
+            ImGui::Separator();
+        
             if (ImGui::MenuItem("Toggle Agent Entity")) {
                 if (agents.size() > i) {
                     if (agents[i].Mode == AgentMode::NONE) {
@@ -262,6 +330,27 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
                     }
                 }
             }
+        
+            ImGui::Separator();
+        
+            if (agents.size() > i) {
+                if (agents[i].ScriptPath.empty()) {
+                    if (ImGui::MenuItem("Attach Python Script")) {
+                        agents[i].ScriptPath = "python_api/agent_" + std::to_string(i) + ".py";
+                        EnsureScriptExists(agents[i].ScriptPath, (int)i);
+                    }
+                } else {
+                    ImGui::TextDisabled("Script: %s", agents[i].ScriptPath.c_str());
+                
+                    if (ImGui::MenuItem("Edit Script")) {
+                        LaunchScriptInEditor(agents[i].ScriptPath);
+                    }
+                    if (ImGui::MenuItem("Detach Script")) {
+                        agents[i].ScriptPath = "";
+                    }
+                }
+            }
+        
             ImGui::EndPopup();
         }
         
@@ -392,7 +481,8 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             transforms[activeEntityID].Position = glm::vec3(modelMatrix[3]);
         }
     }
-    // --------------------------------
+
+    // ------------------------------------------------------------------------------------------------------------------------
     
     // Setup Drag and Drop Target on the Viewport
     if (ImGui::BeginDragDropTarget()) {
@@ -425,7 +515,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         ImGui::EndDragDropTarget();
     }
     
-    // --- [NEW] Detect Clicks, Drags, and Releases in Viewport ---
+    // --- Detect Clicks, Drags, and Releases in Viewport ---
     ImVec2 mousePos = ImGui::GetMousePos();
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
@@ -445,7 +535,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             }
         }
         
-        // [NEW] Track Right Clicks for Context Menu
+        // Track Right Clicks for Context Menu
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             if (!ImGuizmo::IsOver()) {
                 m_hasNewRightClick = true;
@@ -467,23 +557,52 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         m_isMouseDragging = false;
     }
     
-    // --- [NEW] Viewport Context Menu ---
+    // --- Viewport Context Menu ---
     // If main.cpp told us to open the popup this frame, we trigger ImGui::OpenPopup
     if (m_popupEntityID != -1) {
         ImGui::OpenPopup("ViewportEntityMenu");
     }
     
+    //  < ---------- VIEWPORT ENTITY MENU ---------- >
+    static int activePopupID = -1;
+    if (m_popupEntityID != -1) {
+        activePopupID = m_popupEntityID;
+        ImGui::OpenPopup("ViewportEntityMenu");
+        m_popupEntityID = -1; // Reset trigger only
+    }
+    
     if (ImGui::BeginPopup("ViewportEntityMenu")) {
-        ImGui::Text("Entity ID: %d", m_popupEntityID);
+        ImGui::Text("Entity ID: %d", activePopupID);
         ImGui::Separator();
-        if (ImGui::MenuItem("Toggle Agent Entity")) {
-            if (agents.size() > (size_t)m_popupEntityID) {
-                if (agents[m_popupEntityID].Mode == AgentMode::NONE) {
-                    agents[m_popupEntityID].Mode = AgentMode::TRAINING;
-                    agents[m_popupEntityID].AgentModule = "DefaultAgent";
+
+        if (agents.size() > (size_t)activePopupID && activePopupID >= 0) {
+            auto& agent = agents[activePopupID];
+
+            if (ImGui::MenuItem("Toggle Agent Entity")) {
+                if (agent.Mode == AgentMode::NONE) {
+                    agent.Mode = AgentMode::TRAINING;
+                    agent.AgentModule = "DefaultAgent";
                 } else {
-                    agents[m_popupEntityID].Mode = AgentMode::NONE;
-                    agents[m_popupEntityID].AgentModule = "None";
+                    agent.Mode = AgentMode::NONE;
+                    agent.AgentModule = "None";
+                }
+            }
+
+            ImGui::Separator();
+
+            if (agent.ScriptPath.empty()) {
+                if (ImGui::MenuItem("Attach Python Script")) {
+                    agent.ScriptPath = "python_api/agent_" + std::to_string(activePopupID) + ".py";
+                    EnsureScriptExists(agent.ScriptPath, activePopupID);
+                }
+            } else {
+                ImGui::TextDisabled("Script: %s", agent.ScriptPath.c_str());
+
+                if (ImGui::MenuItem("Edit Script")) {
+                    LaunchScriptInEditor(agent.ScriptPath);
+                }
+                if (ImGui::MenuItem("Detach Script")) {
+                    agent.ScriptPath = "";
                 }
             }
         }

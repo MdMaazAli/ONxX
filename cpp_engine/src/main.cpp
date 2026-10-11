@@ -422,6 +422,40 @@ int main() {
             }
 
         }
+
+        // < ---------- RIGHT CLICK RAY CASTING (CONTEXT MENU) ---------- >
+        if (uiManager.HasNewRightClick()) {
+            glm::vec2 ndc = uiManager.GetRightClickNDC();
+            
+            glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
+            glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
+            ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f);
+
+            glm::vec3 ray_world = glm::normalize(glm::inverse(view) * ray_eye);
+
+            int closestEntityID = -1;
+            float closestDistance = 99999.0f;
+            
+            for (size_t i = 0; i < transforms.size(); i++) {
+                glm::vec3 halfSize = transforms[i].Size / 2.0f;
+                glm::vec3 boxMin = transforms[i].Position - halfSize;
+                glm::vec3 boxMax = transforms[i].Position + halfSize;
+                
+                float hitDistance = 0.0f;
+                if (Collision::RayCastIntersects(camera.Position, ray_world, boxMin, boxMax, hitDistance)) {
+                    if (hitDistance < closestDistance) {
+                        closestDistance = hitDistance;
+                        closestEntityID = (int)i;
+                    }
+                }
+            }
+            
+            if (closestEntityID != -1) {
+                // Select entity and open the context menu popup for this entity!
+                draggedEntityID = closestEntityID;
+                uiManager.OpenEntityPopup(closestEntityID);
+            }
+        }
         
         // < ---------- RAYCASTING TO SPAWN NEW ENTITIES ---------- >
         if (uiManager.HasNewDrop()) {
