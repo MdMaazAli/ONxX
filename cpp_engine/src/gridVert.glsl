@@ -1,0 +1,12 @@
+#version 330 core
+layout (location = 0) in vec3 aPos;
+
+uniform mat4 view;
+uniform mat4 projection;
+
+out vec3 WorldPos;
+
+void main() {
+    WorldPos = aPos; // 3D world position to the fragment shader
+    gl_Position = projection * view * vec4(aPos, 1.0);
+}

@@ -1,0 +1,14 @@
+[
+{
+  "directory": "E:/ONXX/build",
+  "command": "D:\\mingw64\\bin\\g++.exe  @CMakeFiles/glm_dummy.dir/includes_CXX.rsp -g -o CMakeFiles\\glm_dummy.dir\\detail\\dummy.obj -c E:\\ONXX\\cpp_engine\\include\\glm\\detail\\dummy.cpp",
+  "file": "E:/ONXX/cpp_engine/include/glm/detail/dummy.cpp",
+  "output": "CMakeFiles/glm_dummy.dir/detail/dummy.obj"
+},
+{
+  "directory": "E:/ONXX/build",
+  "command": "D:\\mingw64\\bin\\g++.exe  @CMakeFiles/glm_dummy.dir/includes_CXX.rsp -g -o CMakeFiles\\glm_dummy.dir\\detail\\glm.obj -c E:\\ONXX\\cpp_engine\\include\\glm\\detail\\glm.cpp",
+  "file": "E:/ONXX/cpp_engine/include/glm/detail/glm.cpp",
+  "output": "CMakeFiles/glm_dummy.dir/detail/glm.obj"
+}
+]

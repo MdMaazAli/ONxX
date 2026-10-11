@@ -1,0 +1,54 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "C/C++: g++.exe build active file",
+            "command": "g++",
+            "args": [
+                "-fdiagnostics-color=always",
+                "-g",
+                
+                // 1. Compile your main source files
+                "${workspaceFolder}/cpp_engine/src/main.cpp",
+                "${workspaceFolder}/cpp_engine/src/UIManager.cpp",
+                "${workspaceFolder}/cpp_engine/src/glad.c",
+                "${workspaceFolder}/cpp_engine/src/Collision.cpp",
+                
+                // 2. Compile ImGui Core & Addons
+                "${workspaceFolder}/cpp_engine/imgui/imgui.cpp",
+                "${workspaceFolder}/cpp_engine/imgui/imgui_draw.cpp",
+                "${workspaceFolder}/cpp_engine/imgui/imgui_tables.cpp",
+                "${workspaceFolder}/cpp_engine/imgui/imgui_widgets.cpp",
+                "${workspaceFolder}/cpp_engine/imgui/ImGuizmo.cpp",
+                
+                // 3. Compile ImGui Backends
+                "${workspaceFolder}/cpp_engine/imgui/backends/imgui_impl_glfw.cpp",
+                "${workspaceFolder}/cpp_engine/imgui/backends/imgui_impl_opengl3.cpp",
+
+                // 4. Define All Include Search Paths
+                "-I", "${workspaceFolder}/cpp_engine/include", 
+                "-I", "${workspaceFolder}/cpp_engine/imgui",   
+                "-I", "${workspaceFolder}/cpp_engine/imgui/backends", 
+                "-I", "${workspaceFolder}/cpp_engine/src",     
+
+                // 5. Output Executable
+                "-o", "${workspaceFolder}/cpp_engine/server.exe",
+
+                // 6. Direct DLL Link for ZeroMQ (Fixes the ld.exe error)
+                "${workspaceFolder}/cpp_engine/libzmq.dll",
+
+                // 7. Standard Windows & OpenGL Linkers
+                "-L", "${workspaceFolder}/cpp_engine/lib",
+                "-lglfw3dll",
+                "-lopengl32",
+                "-lgdi32",
+                "-lws2_32"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

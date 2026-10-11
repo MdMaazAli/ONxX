@@ -1,0 +1,18 @@
+namespace RL;
+
+// defining Vec3
+struct Vec3{
+    x:float;
+    y:float;
+    z:float;
+}
+
+// table representing the EnvState
+table EnvState{
+    position:Vec3;
+    velocity:Vec3;
+    reward:float;
+    done:bool;
+}
+
+root_type EnvState;

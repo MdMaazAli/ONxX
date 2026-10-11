@@ -1,0 +1,5 @@
+{
+    "num_actions" : 4,
+    "num_observations" : 6,
+    "gamma" : 0.95
+}
