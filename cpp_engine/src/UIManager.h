@@ -34,6 +34,13 @@ public:
         return id; 
     }
     
+    // Getter for deleteing an entity
+    int ConsumeDeleteRequest() { 
+        int id = m_deleteRequestID; 
+        m_deleteRequestID = -1; // Reset it immediately so it only fires once
+        return id; 
+    }
+    
     // --- [NEW] Drag & Drop Event Outputs for main.cpp ---
     bool HasNewDrop() const { return m_hasNewDrop; }
     std::string GetDropPayload() const { return m_dropPayload; }
@@ -63,6 +70,7 @@ private:
     EngineState m_state;
 
     int m_newlySelectedHierarchyID = -1;
+    int m_deleteRequestID = -1;
     
     // Drop State
     bool m_hasNewDrop = false;

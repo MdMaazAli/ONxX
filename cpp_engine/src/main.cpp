@@ -212,7 +212,7 @@ int main() {
 
     Shader sphereShader("src/sphrVertShader.glsl", "src/sphrFragShader.glsl");
     SimpleMesh sphrMesh("sphere");
-    // --------------------------------------------------------- > need to change the shader sources
+    // ------------------------------------------------------------------------------- > need to change the shader sources
     Shader cubeShader("src/sphrVertShader.glsl", "src/sphrFragShader.glsl");
     SimpleMesh cubeMesh("cube");
     Shader pyramidShader("src/sphrVertShader.glsl", "src/sphrFragShader.glsl");
@@ -381,6 +381,19 @@ int main() {
             cout << "HIERARCHY SELECTED ENTITY ID: " << draggedEntityID << endl;
         }
         
+        // < ------- DELETE ENTITY HANDLER ------ >
+        int deleteID = uiManager.ConsumeDeleteRequest();
+        if(deleteID != -1 && deleteID < (int)transforms.size()){
+            meshes.erase(meshes.begin() + deleteID);
+            transforms.erase(transforms.begin() + deleteID);
+            physics.erase(physics.begin() + deleteID);
+            agents.erase(agents.begin() + deleteID);
+
+            draggedEntityID = -1;
+
+            std::cout<<"[DELETE] ENTITY "<<deleteID<<" REMOVED"<<endl;
+        }
+        
         // < ---------- RAY CASTING FOR EXISTING ENTITIES ---------- >
         if(uiManager.HasNewClick()){
             glm::vec2 ndc = uiManager.GetClickNDC();
@@ -452,8 +465,9 @@ int main() {
             
             if (closestEntityID != -1) {
                 // Select entity and open the context menu popup for this entity!
-                draggedEntityID = closestEntityID;
-                uiManager.OpenEntityPopup(closestEntityID);
+                if (closestEntityID == draggedEntityID) {
+                    uiManager.OpenEntityPopup(closestEntityID);
+                }
             }
         }
         
@@ -462,20 +476,20 @@ int main() {
             std::string payloadMesh = uiManager.GetDropPayload();
             glm::vec2 ndc = uiManager.GetDropNDC();
             
-            // 1. Convert 2D NDC to 4D Clip Coordinates (pointing into the screen)
+            // Convert 2D NDC to 4D Clip Coordinates (pointing into the screen)
             glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
             
-            // 2. Un-project using the Inverse Camera Matrices
+            // Un-project using the Inverse Camera Matrices
             glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
             ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f); // Make it a direction vector
             
             glm::vec3 ray_world = glm::vec3(glm::inverse(view) * ray_eye);
             ray_world = glm::normalize(ray_world); // This is our 3D Laser!
             
-            // 3. Intersect the laser with the Floor (y = 1.0f)
+            // Intersect the laser with the Floor (y = 1.0f)
             glm::vec3 spawnPoint = Collision::RayIntersectsFloor(camera.Position, ray_world, 1.0f);
             
-            // 4. Create the new Entity at the exact drop location!
+            // Create the new Entity at the exact drop location!
             MeshType typeToSpawn = MeshType::SPHERE;
             if(payloadMesh=="Primitive_Sphere"){
                 typeToSpawn = MeshType::SPHERE;

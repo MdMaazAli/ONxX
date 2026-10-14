@@ -43,7 +43,8 @@
                 "-lglfw3dll",
                 "-lopengl32",
                 "-lgdi32",
-                "-lws2_32"
+                "-lws2_32",
+                "-lshell32"
             ],
             "group": {
                 "kind": "build",

@@ -51,7 +51,7 @@ void LaunchScriptInEditor(const std::string& relativePath) {
 }
 
 //  < ---------- PYTHON SCRIPT FOLDER CHECK ---------- >
-void EnsureScriptExists(const std::string& relativePath, int entityID) {
+void EnsureScriptExists(const std::string& relativePath, const std::string& modelType, int entityID) {
     std::filesystem::path p(relativePath);
     
     // Create the python_api directory if it doesn't exist on this machine
@@ -62,14 +62,42 @@ void EnsureScriptExists(const std::string& relativePath, int entityID) {
     if (!std::filesystem::exists(p)) {
         std::ofstream file(p);
         if (file.is_open()) {
-            file << "# Auto-generated Agent Script for Entity [" << entityID << "]\n";
+            file << "# ==========================================================\n";
+            file << "# " << modelType << " Script for Entity [" << entityID << "]\n";
+            file << "# Connected to C++ Engine via FlatBuffers / ZeroMQ\n";
+            file << "# ==========================================================\n\n";
             file << "import sys\nimport os\n\n";
+            file << "class " << (modelType == "PPO Trainer" ? "PPOAgent" : "DQNAgent") << ":\n";
+            file << "    def __init__(self):\n";
+            file << "        self.model_type = \"" << modelType << "\"\n\n";
+            file << "    def act(self, obs):\n";
+            file << "        # 0 = Move Forward, 1 = Jump, 2 = Move Sideways\n";
+            file << "        return 0\n\n";
             file << "def step(obs):\n";
-            file << "    # Action: 0 = Move Forward, 1 = Jump, 2 = Move Sideways\n";
             file << "    return 0\n";
             file.close();
         }
     }
+}
+
+void SetAgentBrain(AgentComponent& agent, int entityID, const std::string& modelType) {
+    agent.Mode = AgentMode::TRAINING;
+    agent.AgentModule = modelType;
+
+    if (modelType == "PPO Trainer") {
+        agent.ScriptPath = "python_api/ppo_agent_" + std::to_string(entityID) + ".py";
+    } else {
+        agent.ScriptPath = "python_api/dqn_agent_" + std::to_string(entityID) + ".py";
+    }
+
+    // Auto-create the folder and starter script if they don't exist yet
+    EnsureScriptExists(agent.ScriptPath, modelType, entityID);
+}
+
+void RemoveAgentBrain(AgentComponent& agent) {
+    agent.Mode = AgentMode::NONE;
+    agent.AgentModule = "None";
+    agent.ScriptPath = "";
 }
 
 UIManager::UIManager() : m_firstFrame(true), m_metalTexture(0), m_state(EngineState::EDIT_MODE) {}
@@ -231,6 +259,10 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     ImGui::Text("FPS: %.1f", framerate);
     ImGui::End();
 
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+
     ImGui::Begin("Top Bar", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar);
     DrawWindowBackground(m_metalTexture);
     
@@ -283,7 +315,10 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     console_draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, ImVec2(center_pos.x + 3.0f, center_pos.y + 3.0f), IM_COL32(100, 110, 100, 80), watermark);
     // Deep shadow (simulates the depth of the stamp)
     console_draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, center_pos, IM_COL32(15, 20, 15, 200), watermark);
-    // --------------------------------------------------------------------------------------------------------------------------
+
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
     
     ImGui::Text("Initializing core modules...");
     ImGui::Text("ZMQ Listener active on port 5555.");
@@ -314,53 +349,52 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             m_newlySelectedHierarchyID = (int)i; // Save this click to send to main.cpp!
         }
         
-        // < ----------- Right Click Context Menu for Hierarchy ----------- >
-        if (ImGui::BeginPopupContextItem("HierarchyEntityMenu")) {
-            ImGui::Text("Entity [%zu]", i);
-            ImGui::Separator();
-        
-            if (ImGui::MenuItem("Toggle Agent Entity")) {
-                if (agents.size() > i) {
-                    if (agents[i].Mode == AgentMode::NONE) {
-                        agents[i].Mode = AgentMode::TRAINING;
-                        agents[i].AgentModule = "DQN Trainer";
-                    } else {
-                        agents[i].Mode = AgentMode::NONE;
-                        agents[i].AgentModule = "None";
-                    }
-                }
-            }
-        
-            ImGui::Separator();
-        
+        // < --------------------- Right Click Context Menu for Hierarchy --------------------- >
+        if (isSelected && ImGui::BeginPopupContextItem("HierarchyEntityMenu")) {
             if (agents.size() > i) {
-                if (agents[i].ScriptPath.empty()) {
-                    if (ImGui::MenuItem("Attach Python Script")) {
-                        agents[i].ScriptPath = "python_api/agent_" + std::to_string(i) + ".py";
-                        EnsureScriptExists(agents[i].ScriptPath, (int)i);
+                auto& agent = agents[i];
+                bool isAgent = (agent.Mode != AgentMode::NONE);
+
+                if (!isAgent) {
+                    if (ImGui::MenuItem("Convert to Agent Entity (DQN Default)")) {
+                        SetAgentBrain(agent, (int)i, "DQN Trainer");
                     }
                 } else {
-                    ImGui::TextDisabled("Script: %s", agents[i].ScriptPath.c_str());
-                
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), "Brain: %s", agent.AgentModule.c_str());
+                    ImGui::TextDisabled("Script: %s", agent.ScriptPath.c_str());
+                    ImGui::Separator();
+
                     if (ImGui::MenuItem("Edit Script")) {
-                        LaunchScriptInEditor(agents[i].ScriptPath);
+                        LaunchScriptInEditor(agent.ScriptPath);
                     }
-                    if (ImGui::MenuItem("Detach Script")) {
-                        agents[i].ScriptPath = "";
+                    if (ImGui::BeginMenu("Change Model")) {
+                        if (ImGui::MenuItem("DQN Trainer", nullptr, agent.AgentModule == "DQN Trainer")) {
+                            SetAgentBrain(agent, (int)i, "DQN Trainer");
+                        }
+                        if (ImGui::MenuItem("PPO Trainer", nullptr, agent.AgentModule == "PPO Trainer")) {
+                            SetAgentBrain(agent, (int)i, "PPO Trainer");
+                        }
+                        ImGui::EndMenu();
+                    }
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Remove Agent Component")) {
+                        RemoveAgentBrain(agent);
                     }
                 }
             }
-        
+            ImGui::Separator();
+            if (ImGui::MenuItem("Delete")) {
+                m_deleteRequestID = (int)i;
+            }
             ImGui::EndPopup();
         }
         
         // Setup Drag and Drop Target for the Hierarchy Item
         if (ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("RL_HARDWARE")) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("RL_MODEL")) {
                 const char* moduleName = (const char*)payload->Data;
                 if (agents.size() > i) {
-                    agents[i].Mode = AgentMode::TRAINING;
-                    agents[i].AgentModule = moduleName;
+                    SetAgentBrain(agents[i], (int)i, moduleName);
                 }
             }
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("RL_BRAIN")) {
@@ -405,25 +439,29 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
 
     ImGui::End();
 
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+
     ImGui::Begin("Model Library", nullptr, ImGuiWindowFlags_NoCollapse);
     DrawWindowBackground(m_metalTexture);
     
-    ImGui::Text("HARDWARE SCRIPTS");
+    ImGui::Text("MODEL SCRIPTS");
     ImGui::Separator();
     
-    // Create draggable hardware modules
+    // Create draggable modules
     ImGui::Button("DQN Trainer", ImVec2(-1, 30));
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-        const char* payload = "DQN_Trainer";
-        ImGui::SetDragDropPayload("RL_HARDWARE", payload, strlen(payload) + 1);
+        const char* payload = "DQN Trainer";
+        ImGui::SetDragDropPayload("RL_MODEL", payload, strlen(payload) + 1);
         ImGui::Text("Attach DQN Trainer to Entity...");
         ImGui::EndDragDropSource();
     }
     
     ImGui::Button("PPO Trainer", ImVec2(-1, 30));
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-        const char* payload = "PPO_Trainer";
-        ImGui::SetDragDropPayload("RL_HARDWARE", payload, strlen(payload) + 1);
+        const char* payload = "PPO Trainer";
+        ImGui::SetDragDropPayload("RL_MODEL", payload, strlen(payload) + 1);
         ImGui::Text("Attach PPO Trainer to Entity...");
         ImGui::EndDragDropSource();
     }
@@ -441,6 +479,10 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     }
     
     ImGui::End();
+
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
 
     ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_NoCollapse);
     ImVec2 availSpace = ImGui::GetContentRegionAvail();
@@ -483,14 +525,15 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     }
 
     // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
     
     // Setup Drag and Drop Target on the Viewport
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("RL_HARDWARE")) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("RL_MODEL")) {
             const char* moduleName = (const char*)payload->Data;
-            if (!agents.empty()) {
-                agents[0].Mode = AgentMode::TRAINING;
-                agents[0].AgentModule = moduleName;
+            if(activeEntityID != -1 && activeEntityID < (int)agents.size()){
+                SetAgentBrain(agents[activeEntityID], activeEntityID, moduleName);
             }
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("RL_BRAIN")) {
@@ -556,7 +599,11 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         m_hasMouseReleased = true;
         m_isMouseDragging = false;
     }
-    
+
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+
     // --- Viewport Context Menu ---
     // If main.cpp told us to open the popup this frame, we trigger ImGui::OpenPopup
     if (m_popupEntityID != -1) {
@@ -574,40 +621,44 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     if (ImGui::BeginPopup("ViewportEntityMenu")) {
         ImGui::Text("Entity ID: %d", activePopupID);
         ImGui::Separator();
-
         if (agents.size() > (size_t)activePopupID && activePopupID >= 0) {
             auto& agent = agents[activePopupID];
+            bool isAgent = (agent.Mode != AgentMode::NONE);
 
-            if (ImGui::MenuItem("Toggle Agent Entity")) {
-                if (agent.Mode == AgentMode::NONE) {
-                    agent.Mode = AgentMode::TRAINING;
-                    agent.AgentModule = "DefaultAgent";
-                } else {
-                    agent.Mode = AgentMode::NONE;
-                    agent.AgentModule = "None";
-                }
-            }
-
-            ImGui::Separator();
-
-            if (agent.ScriptPath.empty()) {
-                if (ImGui::MenuItem("Attach Python Script")) {
-                    agent.ScriptPath = "python_api/agent_" + std::to_string(activePopupID) + ".py";
-                    EnsureScriptExists(agent.ScriptPath, activePopupID);
+            if (!isAgent) {
+                if (ImGui::MenuItem("Convert to Agent Entity (DQN Default)")) {
+                    SetAgentBrain(agent, activePopupID, "DQN Trainer");
                 }
             } else {
+                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), "Brain: %s", agent.AgentModule.c_str());
                 ImGui::TextDisabled("Script: %s", agent.ScriptPath.c_str());
+                ImGui::Separator();
 
                 if (ImGui::MenuItem("Edit Script")) {
                     LaunchScriptInEditor(agent.ScriptPath);
                 }
-                if (ImGui::MenuItem("Detach Script")) {
-                    agent.ScriptPath = "";
+                if (ImGui::BeginMenu("Change Model")) {
+                    if (ImGui::MenuItem("DQN Trainer", nullptr, agent.AgentModule == "DQN Trainer")) {
+                        SetAgentBrain(agent, activePopupID, "DQN Trainer");
+                    }
+                    if (ImGui::MenuItem("PPO Trainer", nullptr, agent.AgentModule == "PPO Trainer")) {
+                        SetAgentBrain(agent, activePopupID, "PPO Trainer");
+                    }
+                    ImGui::EndMenu();
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Remove Agent Component")) {
+                    RemoveAgentBrain(agent);
                 }
             }
         }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete")) {
+            m_deleteRequestID = activePopupID;
+        }
         ImGui::EndPopup();
     }
+
     
     // Reset the popup trigger so it doesn't try to open every frame
     m_popupEntityID = -1;
