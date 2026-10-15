@@ -17,7 +17,7 @@ public:
     void Render(GLFWwindow* window, 
                 GLuint fboTextureId, 
                 std::vector<TransformComponent>& transforms, 
-                const std::vector<PhysicsComponent>& physics, 
+                std::vector<PhysicsComponent>& physics, 
                 std::vector<AgentComponent>& agents,
                 float framerate,
                 bool& cursorInViewport,

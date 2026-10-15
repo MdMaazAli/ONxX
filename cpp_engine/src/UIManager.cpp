@@ -80,6 +80,14 @@ void EnsureScriptExists(const std::string& relativePath, const std::string& mode
     }
 }
 
+void SetRigidbody(PhysicsComponent& phyComp) {
+    phyComp.Rigidbody = Rigidbody::YES;
+}
+
+void RemoveRigidbody(PhysicsComponent& phyComp) {
+    phyComp.Rigidbody = Rigidbody::NO;
+}
+
 void SetAgentBrain(AgentComponent& agent, int entityID, const std::string& modelType) {
     agent.Mode = AgentMode::TRAINING;
     agent.AgentModule = modelType;
@@ -226,7 +234,7 @@ void UIManager::SetupDockingLayout() {
     ImGui::DockBuilderFinish(dockspace_id);
 }
 
-void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, const std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, int activeEntityID) 
+void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, int activeEntityID) 
 {
     ImGuizmo::BeginFrame();
 
@@ -351,6 +359,22 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         
         // < --------------------- Right Click Context Menu for Hierarchy --------------------- >
         if (isSelected && ImGui::BeginPopupContextItem("HierarchyEntityMenu")) {
+            if(physics.size() > i){
+                PhysicsComponent& phyComp = physics[i];
+                bool isRb = (phyComp.Rigidbody != Rigidbody::NO);
+
+                if (!isRb) {
+                    if (ImGui::MenuItem("Rigidbody")) {
+                        SetRigidbody(phyComp);
+                    }
+                }
+                else{
+                    ImGui::Separator();
+                    if (ImGui::MenuItem("Remove Rigidbody")) {
+                        RemoveRigidbody(phyComp);
+                    }
+                }
+            }
             if (agents.size() > i) {
                 auto& agent = agents[i];
                 bool isAgent = (agent.Mode != AgentMode::NONE);

@@ -218,6 +218,10 @@ int main() {
     Shader pyramidShader("src/sphrVertShader.glsl", "src/sphrFragShader.glsl");
     SimpleMesh pyramidMesh("pyramid");
 
+    // -------------------------------------------------------------------------------------------------------------------------
+    // -------------------------------------------------------------------------------------------------------------------------
+    // -------------------------------------------------------------------------------------------------------------------------
+
     // parallel vector ecs directory to handle the physics of entities
     std::vector<MeshComponent> meshes;
     std::vector<TransformComponent> transforms;
@@ -227,7 +231,7 @@ int main() {
     // entitiy = 0 ------ > RL_agent/player
     meshes.push_back({MeshType::SPHERE});
     transforms.push_back({Entity::ACTIVE, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
-    physics.push_back({glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
+    physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
     agents.push_back({AgentMode::NONE,"None"});
     
     float accTime = 0.0f,dt = 1.0/60.0f;
@@ -296,6 +300,10 @@ int main() {
         }
         
         fbo.Bind(); // Direct all 3D drawing commands into our FBO texture attachment
+
+        // -------------------------------------------------------------------------------------------------------------------    
+        // -------------------------------------------------------------------------------------------------------------------
+        // -------------------------------------------------------------------------------------------------------------------
         
         glClearColor(0.2f,0.3f,0.3f,1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -366,6 +374,10 @@ int main() {
         uiManager.Render(window, fbo.textureId, transforms, physics, agents, io.Framerate, cursorInViewport, view, projection, draggedEntityID);
         ImGui::Render();
 
+        // -------------------------------------------------------------------------------------------------------------------    
+        // -------------------------------------------------------------------------------------------------------------------
+        // -------------------------------------------------------------------------------------------------------------------
+
         // < ------- ACTIVE/INACTIVE ENTITY HANDLER ------ >
         int hierarchyClickID = uiManager.ConsumeHierarchySelection();
         if (hierarchyClickID != -1) {
@@ -383,7 +395,7 @@ int main() {
         
         // < ------- DELETE ENTITY HANDLER ------ >
         int deleteID = uiManager.ConsumeDeleteRequest();
-        if(deleteID != -1 && deleteID < (int)transforms.size()){
+        if(deleteID >= 0 && deleteID < (int)transforms.size()){
             meshes.erase(meshes.begin() + deleteID);
             transforms.erase(transforms.begin() + deleteID);
             physics.erase(physics.begin() + deleteID);
@@ -393,6 +405,10 @@ int main() {
 
             std::cout<<"[DELETE] ENTITY "<<deleteID<<" REMOVED"<<endl;
         }
+
+        // -------------------------------------------------------------------------------------------------------------------    
+        // -------------------------------------------------------------------------------------------------------------------
+        // -------------------------------------------------------------------------------------------------------------------
         
         // < ---------- RAY CASTING FOR EXISTING ENTITIES ---------- >
         if(uiManager.HasNewClick()){
@@ -470,6 +486,10 @@ int main() {
                 }
             }
         }
+
+        // -------------------------------------------------------------------------------------------------------------------    
+        // -------------------------------------------------------------------------------------------------------------------
+        // -------------------------------------------------------------------------------------------------------------------
         
         // < ---------- RAYCASTING TO SPAWN NEW ENTITIES ---------- >
         if (uiManager.HasNewDrop()) {
@@ -502,7 +522,7 @@ int main() {
             }
             meshes.push_back({typeToSpawn});
             transforms.push_back({Entity::INACTIVE, spawnPoint, glm::vec3(1.0f, 1.0f, 1.0f)});
-            physics.push_back({glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
+            physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
             agents.push_back({AgentMode::NONE, "None"});
             
             std::cout << "[SPAWN] New Entity created at X:" << spawnPoint.x << " Z:" << spawnPoint.z << std::endl;

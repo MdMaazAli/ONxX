@@ -14,6 +14,7 @@
 enum class Entity{INACTIVE, ACTIVE};
 enum class AgentMode{NONE, TRAINING, INFERENCE};
 enum class MeshType{MESH, SPHERE, CUBE, PYRAMID};
+enum class Rigidbody{YES, NO};
 
 struct AgentComponent{
     AgentMode Mode = AgentMode::NONE;
@@ -34,6 +35,7 @@ struct TransformComponent{
 };
 
 struct PhysicsComponent{
+    Rigidbody Rigidbody = Rigidbody::NO;
     glm::vec3 Velocity;
     float Mass;
 };
@@ -43,21 +45,23 @@ class PhysicsSystem{
     public:
         static void Update(std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, float dt){
             // seq loop over the stride(clearing it out)
-            // for(size_t i=0; i<transforms.size(); i++){
-            //     if(transforms[i].Position.y>1.0f){
-            //         physics[i].Velocity.y -= 9.81f*dt;
-            //     }
-
-            //     transforms[i].Position += physics[i].Velocity*dt;
-
-            //     if(transforms[i].Position.y<1.0f){
-            //         transforms[i].Position.y = 1.0f;
+            for(size_t i=0; i<transforms.size(); i++){
+                if(physics[i].Rigidbody == Rigidbody::YES){
+                    if(transforms[i].Position.y>1.0f){
+                        physics[i].Velocity.y -= 9.81f*dt;
+                    }
                     
-            //         if(physics[i].Velocity.y<0.0f){
-            //             physics[i].Velocity.y = 0.0f;
-            //         }
-            //     }
-            // }
+                    transforms[i].Position += physics[i].Velocity*dt;
+                    
+                    if(transforms[i].Position.y<1.0f){
+                        transforms[i].Position.y = 1.0f;
+                        
+                        if(physics[i].Velocity.y<0.0f){
+                            physics[i].Velocity.y = 0.0f;
+                        }
+                    }
+                }
+            }
         }
 };
 
