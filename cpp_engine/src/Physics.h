@@ -24,7 +24,7 @@ struct AgentComponent{
 
 struct MeshComponent{
     MeshType Mesh = MeshType::SPHERE;
-    // -------------------------------------- > materails 
+    // -------------------------------------- > materials 
 };
 
 // Plain Old Data(POD)

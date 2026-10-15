@@ -228,11 +228,33 @@ int main() {
     std::vector<PhysicsComponent> physics;
     std::vector<AgentComponent> agents;
 
+    // SNAPSHOT STATE ECS DIRECTORY (for saving/restoring state)
+    std::vector<MeshComponent> snapshotMeshes;
+    std::vector<TransformComponent> snapshotTransforms;
+    std::vector<PhysicsComponent> snapshotPhysics;
+
     // entitiy = 0 ------ > RL_agent/player
     meshes.push_back({MeshType::SPHERE});
     transforms.push_back({Entity::ACTIVE, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
     physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
     agents.push_back({AgentMode::NONE,"None"});
+
+    // < ------------------- SNAPSHOT ------------------- >
+    auto TakeSnapshot = [&]() {
+        snapshotMeshes = meshes;
+        snapshotTransforms = transforms;
+        snapshotPhysics = physics;
+
+        std::cout<<"[SNAPSHOT] TRANSFORM SIZE : "<<transforms.size()<<endl;
+    };
+
+    auto RestoreSnapshot = [&]() {
+        meshes = snapshotMeshes;
+        transforms = snapshotTransforms;
+        physics = snapshotPhysics;
+
+        std::cout<<"[RESTORE] TRANSFORM SIZE : "<<transforms.size()<<endl;
+    };
     
     float accTime = 0.0f,dt = 1.0/60.0f;
     
@@ -243,67 +265,99 @@ int main() {
         float currFrame = glfwGetTime();
         deltaTime = currFrame-lastFrame;
         lastFrame = currFrame;
-        accTime += deltaTime;
         
-        processInput(window);
+        // < --------------- STATE MANAGEMENT --------------- >
+        static EngineState prevState = EngineState::EDIT_MODE;
+        EngineState currState = uiManager.GetState();
         
-        zmq::message_t request;
-        auto received = socket.recv(request, zmq::recv_flags::dontwait); // Non-blocking check
-        
-        if(received.has_value()){
-            std::string action = request.to_string();
-            float reward = 0.7f; 
-            bool done = false;
-            
-            if(action == "RESET"){
-                transforms[0].Position = glm::vec3(0.0f,1.0f,0.0f);
-                physics[0].Velocity = glm::vec3(0.0f);
-                std::cout << "[RESET] Environment reset to starting line." << std::endl;
+        if (prevState != currState) {
+            if(prevState == EngineState::EDIT_MODE && (currState == EngineState::TRAINING_MODE || currState == EngineState::INFERENCE_MODE)) {
+                TakeSnapshot();
             }
-            else{
-                try{
-                    int action_idx = std::stoi(action);
-                    std::cout << "[Action received]: " << action_idx << std::endl;
-                    
-                    // Simple Physics
-                    if (action_idx == 0){
-                        physics[0].Velocity.x += 0.7f; // MOVE FORWARD
-                    }
-                    if (action_idx == 1){
-                        physics[0].Velocity.y += 7.0f; // JUMP
-                    }
-                    if (action_idx == 2){
-                        physics[0].Velocity.z += 2.0f; // MOVE SIDEWAYS
-                    }
-                    
-                    done = (transforms[0].Position.x > 10.0f);
-                }
-                catch(const std::exception& e){
-                    std::cerr<<"Socket parse error:"<<e.what()<<endl;
-                }
+            else if(currState == EngineState::EDIT_MODE) {
+                RestoreSnapshot();
             }
             
-            // Pack FlatBuffers Payload
-            flatbuffers::FlatBufferBuilder builder(1024);
-            RL::Vec3 position(transforms[0].Position.x, transforms[0].Position.y, transforms[0].Position.z);
-            RL::Vec3 velocity(physics[0].Velocity.x, physics[0].Velocity.y, physics[0].Velocity.z);
-            auto env_state_offset = RL::CreateEnvState(builder, &position, &velocity, reward, done);
-            builder.Finish(env_state_offset);
-            
-            // Sending reply in binary --- > flatbuffers --- > python 
-            uint8_t* buffer_pointer = builder.GetBufferPointer();
-            size_t buffer_size = builder.GetSize();
-            
-            zmq::message_t reply(builder.GetSize());
-            memcpy(reply.data(), buffer_pointer, buffer_size);
-            socket.send(reply, zmq::send_flags::none);
+            prevState = currState;
+        }
+
+        if(currState != EngineState::EDIT_MODE) {
+            accTime += deltaTime;
         }
         
-        fbo.Bind(); // Direct all 3D drawing commands into our FBO texture attachment
+        processInput(window);
 
+        if (currState != EngineState::EDIT_MODE){
+            
+            zmq::message_t request;
+            auto received = socket.recv(request, zmq::recv_flags::dontwait); // Non-blocking check
+            
+            if(received.has_value()){
+                std::string action = request.to_string();
+                float reward = 0.7f; 
+                bool done = false;
+
+                if(action == "RESET"){
+                    RestoreSnapshot();
+                    std::cout << "[RESET] Environment reset to starting line." << std::endl;
+                }
+                else{
+                    try{
+                        int action_idx = std::stoi(action);
+                        std::cout << "[Action received]: " << action_idx << std::endl;
+
+                        // Simple Physics
+                        if (action_idx == 0){
+                            physics[0].Velocity.x += 0.7f; // MOVE FORWARD
+                        }
+                        if (action_idx == 1){
+                            physics[0].Velocity.y += 7.0f; // JUMP
+                        }
+                        if (action_idx == 2){
+                            physics[0].Velocity.z += 2.0f; // MOVE SIDEWAYS
+                        }
+
+                        done = (transforms[0].Position.x > 10.0f);
+                    }
+                    catch(const std::exception& e){
+                        std::cerr<<"Socket parse error:"<<e.what()<<endl;
+                    }
+                }
+
+                // Pack FlatBuffers Payload
+                flatbuffers::FlatBufferBuilder builder(1024);
+                RL::Vec3 position(transforms[0].Position.x, transforms[0].Position.y, transforms[0].Position.z);
+                RL::Vec3 velocity(physics[0].Velocity.x, physics[0].Velocity.y, physics[0].Velocity.z);
+                auto env_state_offset = RL::CreateEnvState(builder, &position, &velocity, reward, done);
+                builder.Finish(env_state_offset);
+
+                // Sending reply in binary --- > flatbuffers --- > python 
+                uint8_t* buffer_pointer = builder.GetBufferPointer();
+                size_t buffer_size = builder.GetSize();
+
+                zmq::message_t reply(builder.GetSize());
+                memcpy(reply.data(), buffer_pointer, buffer_size);
+                socket.send(reply, zmq::send_flags::none);
+            }
+            
+        }
+        
         // -------------------------------------------------------------------------------------------------------------------    
         // -------------------------------------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------------------------------------
+
+        // < -------------------- physics loop ------------------ >
+        if (currState != EngineState::EDIT_MODE){
+
+            while(accTime>=dt){
+                // < ----- gravity ----- >
+                PhysicsSystem::Update(transforms, physics, dt);
+                accTime -= dt;
+            }
+
+        }
+
+        fbo.Bind(); // Direct all 3D drawing commands into our FBO texture attachment
         
         glClearColor(0.2f,0.3f,0.3f,1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -313,13 +367,6 @@ int main() {
         
         glm::mat4 view = glm::mat4(1.0f);
         view = camera.GetViewMatrix();
-        
-        // < -------------------- physics loop ------------------ >
-        while(accTime>=dt){
-            // < ----- gravity ----- >
-            PhysicsSystem::Update(transforms, physics, dt);
-            accTime -= dt;
-        }
 
         // calling all shader types
         sphereShader.use();
@@ -410,122 +457,130 @@ int main() {
         // -------------------------------------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------------------------------------
         
-        // < ---------- RAY CASTING FOR EXISTING ENTITIES ---------- >
-        if(uiManager.HasNewClick()){
-            glm::vec2 ndc = uiManager.GetClickNDC();
+        if (currState == EngineState::EDIT_MODE){
             
-            glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
-            glm::vec4 ray_eye = glm::inverse(projection)*ray_clip;
-            ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f);
-
-            glm::vec3 ray_world = glm::normalize(glm::inverse(view)*ray_eye);
-
-            int closestEntityID = -1;
-            float closestDistance = 99999.0f;
+            // < ---------- RAY CASTING FOR EXISTING ENTITIES ---------- >
+            if(uiManager.HasNewClick()){
+                glm::vec2 ndc = uiManager.GetClickNDC();
             
-            for(size_t i=0; i<transforms.size(); i++){
-                glm::vec3 halfSize = transforms[i].Size/2.0f;
-                glm::vec3 boxMin = transforms[i].Position-halfSize;
-                glm::vec3 boxMax = transforms[i].Position+halfSize;
+                glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
+                glm::vec4 ray_eye = glm::inverse(projection)*ray_clip;
+                ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f);
+            
+                glm::vec3 ray_world = glm::normalize(glm::inverse(view)*ray_eye);
+
+                int closestEntityID = -1;
+                float closestDistance = 99999.0f;
                 
-                float hitDistance = 0.0f;
-                
-                if(Collision::RayCastIntersects(camera.Position, ray_world, boxMin, boxMax, hitDistance)){
-                    if(hitDistance<closestDistance){
-                        closestDistance = hitDistance;
-                        closestEntityID = (int)i;
+                for(size_t i=0; i<transforms.size(); i++){
+                    glm::vec3 halfSize = transforms[i].Size/2.0f;
+                    glm::vec3 boxMin = transforms[i].Position-halfSize;
+                    glm::vec3 boxMax = transforms[i].Position+halfSize;
+
+                    float hitDistance = 0.0f;
+
+                    if(Collision::RayCastIntersects(camera.Position, ray_world, boxMin, boxMax, hitDistance)){
+                        if(hitDistance<closestDistance){
+                            closestDistance = hitDistance;
+                            closestEntityID = (int)i;
+                        }
                     }
                 }
-            }
-            
-            if(closestEntityID!=-1){
-                transforms[closestEntityID].Is = Entity::ACTIVE;
-                // < ----- ACTIVE ENTITY ID ----- >
-                draggedEntityID = closestEntityID;
-                cout<<"ENTITY ID:"<<closestEntityID<<" ACTIVE "<<"SELECTED AT A DISTANCE OF:"<<closestDistance<<endl;
-                grabDistance = glm::distance(camera.Position, transforms[draggedEntityID].Position);
-            }
-            else{
-                draggedEntityID = -1; // Deselect when clicking empty space
-                cout<<"VOID"<<endl;
-            }
 
-        }
-
-        // < ---------- RIGHT CLICK RAY CASTING (CONTEXT MENU) ---------- >
-        if (uiManager.HasNewRightClick()) {
-            glm::vec2 ndc = uiManager.GetRightClickNDC();
-            
-            glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
-            glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
-            ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f);
-
-            glm::vec3 ray_world = glm::normalize(glm::inverse(view) * ray_eye);
-
-            int closestEntityID = -1;
-            float closestDistance = 99999.0f;
-            
-            for (size_t i = 0; i < transforms.size(); i++) {
-                glm::vec3 halfSize = transforms[i].Size / 2.0f;
-                glm::vec3 boxMin = transforms[i].Position - halfSize;
-                glm::vec3 boxMax = transforms[i].Position + halfSize;
-                
-                float hitDistance = 0.0f;
-                if (Collision::RayCastIntersects(camera.Position, ray_world, boxMin, boxMax, hitDistance)) {
-                    if (hitDistance < closestDistance) {
-                        closestDistance = hitDistance;
-                        closestEntityID = (int)i;
-                    }
+                if(closestEntityID!=-1){
+                    transforms[closestEntityID].Is = Entity::ACTIVE;
+                    // < ----- ACTIVE ENTITY ID ----- >
+                    draggedEntityID = closestEntityID;
+                    cout<<"ENTITY ID:"<<closestEntityID<<" ACTIVE "<<"SELECTED AT A DISTANCE OF:"<<closestDistance<<endl;
+                    grabDistance = glm::distance(camera.Position, transforms[draggedEntityID].Position);
                 }
-            }
-            
-            if (closestEntityID != -1) {
-                // Select entity and open the context menu popup for this entity!
-                if (closestEntityID == draggedEntityID) {
-                    uiManager.OpenEntityPopup(closestEntityID);
+                else{
+                    draggedEntityID = -1; // Deselect when clicking empty space
+                    cout<<"VOID"<<endl;
                 }
+            
             }
-        }
-
-        // -------------------------------------------------------------------------------------------------------------------    
-        // -------------------------------------------------------------------------------------------------------------------
-        // -------------------------------------------------------------------------------------------------------------------
         
-        // < ---------- RAYCASTING TO SPAWN NEW ENTITIES ---------- >
-        if (uiManager.HasNewDrop()) {
-            std::string payloadMesh = uiManager.GetDropPayload();
-            glm::vec2 ndc = uiManager.GetDropNDC();
-            
-            // Convert 2D NDC to 4D Clip Coordinates (pointing into the screen)
-            glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
-            
-            // Un-project using the Inverse Camera Matrices
-            glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
-            ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f); // Make it a direction vector
-            
-            glm::vec3 ray_world = glm::vec3(glm::inverse(view) * ray_eye);
-            ray_world = glm::normalize(ray_world); // This is our 3D Laser!
-            
-            // Intersect the laser with the Floor (y = 1.0f)
-            glm::vec3 spawnPoint = Collision::RayIntersectsFloor(camera.Position, ray_world, 1.0f);
-            
-            // Create the new Entity at the exact drop location!
-            MeshType typeToSpawn = MeshType::SPHERE;
-            if(payloadMesh=="Primitive_Sphere"){
-                typeToSpawn = MeshType::SPHERE;
+            // < ---------- RIGHT CLICK RAY CASTING (CONTEXT MENU) ---------- >
+            if (uiManager.HasNewRightClick()) {
+                glm::vec2 ndc = uiManager.GetRightClickNDC();
+
+                glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
+                glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
+                ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f);
+
+                glm::vec3 ray_world = glm::normalize(glm::inverse(view) * ray_eye);
+
+                int closestEntityID = -1;
+                float closestDistance = 99999.0f;
+
+                for (size_t i = 0; i < transforms.size(); i++) {
+                    glm::vec3 halfSize = transforms[i].Size / 2.0f;
+                    glm::vec3 boxMin = transforms[i].Position - halfSize;
+                    glm::vec3 boxMax = transforms[i].Position + halfSize;
+
+                    float hitDistance = 0.0f;
+                    if (Collision::RayCastIntersects(camera.Position, ray_world, boxMin, boxMax, hitDistance)) {
+                        if (hitDistance < closestDistance) {
+                            closestDistance = hitDistance;
+                            closestEntityID = (int)i;
+                        }
+                    }
+                }
+
+                if (closestEntityID != -1) {
+                    // Select entity and open the context menu popup for this entity!
+                    if (closestEntityID == draggedEntityID) {
+                        uiManager.OpenEntityPopup(closestEntityID);
+                    }
+                }
             }
-            if(payloadMesh=="Primitive_Cube"){
-                typeToSpawn = MeshType::CUBE;
-            }
-            if(payloadMesh=="Primitive_Pyramid"){
-                typeToSpawn = MeshType::PYRAMID;
-            }
-            meshes.push_back({typeToSpawn});
-            transforms.push_back({Entity::INACTIVE, spawnPoint, glm::vec3(1.0f, 1.0f, 1.0f)});
-            physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
-            agents.push_back({AgentMode::NONE, "None"});
             
-            std::cout << "[SPAWN] New Entity created at X:" << spawnPoint.x << " Z:" << spawnPoint.z << std::endl;
+            // -------------------------------------------------------------------------------------------------------------------    
+            // -------------------------------------------------------------------------------------------------------------------
+            // -------------------------------------------------------------------------------------------------------------------
+            
+            // < ---------- RAYCASTING TO SPAWN NEW ENTITIES ---------- >
+            if (uiManager.HasNewDrop()) {
+                std::string payloadMesh = uiManager.GetDropPayload();
+                glm::vec2 ndc = uiManager.GetDropNDC();
+                
+                // Convert 2D NDC to 4D Clip Coordinates (pointing into the screen)
+                glm::vec4 ray_clip = glm::vec4(ndc.x, ndc.y, -1.0f, 1.0f);
+                
+                // Un-project using the Inverse Camera Matrices
+                glm::vec4 ray_eye = glm::inverse(projection) * ray_clip;
+                ray_eye = glm::vec4(ray_eye.x, ray_eye.y, -1.0f, 0.0f); // Make it a direction vector
+                
+                glm::vec3 ray_world = glm::vec3(glm::inverse(view) * ray_eye);
+                ray_world = glm::normalize(ray_world); // This is our 3D Laser!
+                
+                // Intersect the laser with the Floor (y = 1.0f)
+                glm::vec3 spawnPoint = Collision::RayIntersectsFloor(camera.Position, ray_world, 1.0f);
+                
+                // Create the new Entity at the exact drop location!
+                MeshType typeToSpawn = MeshType::SPHERE;
+                if(payloadMesh=="Primitive_Sphere"){
+                    typeToSpawn = MeshType::SPHERE;
+                }
+                if(payloadMesh=="Primitive_Cube"){
+                    typeToSpawn = MeshType::CUBE;
+                }
+                if(payloadMesh=="Primitive_Pyramid"){
+                    typeToSpawn = MeshType::PYRAMID;
+                }
+                meshes.push_back({typeToSpawn});
+                transforms.push_back({Entity::INACTIVE, spawnPoint, glm::vec3(1.0f, 1.0f, 1.0f)});
+                physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
+                agents.push_back({AgentMode::NONE, "None"});
+
+                std::cout << "[SPAWN] New Entity created at X:" << spawnPoint.x << " Z:" << spawnPoint.z << std::endl;
+            
+            }
+
+        }
+        else{
+            draggedEntityID = -1;
         }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
