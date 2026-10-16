@@ -232,6 +232,7 @@ int main() {
     std::vector<MeshComponent> snapshotMeshes;
     std::vector<TransformComponent> snapshotTransforms;
     std::vector<PhysicsComponent> snapshotPhysics;
+    std::vector<AgentComponent> snapshotAgents;
 
     // entitiy = 0 ------ > RL_agent/player
     meshes.push_back({MeshType::SPHERE});
@@ -244,6 +245,7 @@ int main() {
         snapshotMeshes = meshes;
         snapshotTransforms = transforms;
         snapshotPhysics = physics;
+        snapshotAgents = agents;
 
         std::cout<<"[SNAPSHOT] TRANSFORM SIZE : "<<transforms.size()<<endl;
     };
@@ -252,6 +254,7 @@ int main() {
         meshes = snapshotMeshes;
         transforms = snapshotTransforms;
         physics = snapshotPhysics;
+        agents = snapshotAgents;
 
         std::cout<<"[RESTORE] TRANSFORM SIZE : "<<transforms.size()<<endl;
     };
@@ -270,7 +273,12 @@ int main() {
         static EngineState prevState = EngineState::EDIT_MODE;
         EngineState currState = uiManager.GetState();
         
+        if(currState != EngineState::EDIT_MODE) {
+            accTime += deltaTime;
+        }
+
         if (prevState != currState) {
+            accTime = 0.0f;
             if(prevState == EngineState::EDIT_MODE && (currState == EngineState::TRAINING_MODE || currState == EngineState::INFERENCE_MODE)) {
                 TakeSnapshot();
             }
@@ -279,10 +287,6 @@ int main() {
             }
             
             prevState = currState;
-        }
-
-        if(currState != EngineState::EDIT_MODE) {
-            accTime += deltaTime;
         }
         
         processInput(window);
@@ -367,27 +371,25 @@ int main() {
         
         glm::mat4 view = glm::mat4(1.0f);
         view = camera.GetViewMatrix();
-
-        // calling all shader types
-        sphereShader.use();
-        cubeShader.use();
-        pyramidShader.use();
         
         // < ------- MESH REGISTRY GO THROUGH BEFORE RENDERING ------- >
         for(size_t i=0; i<transforms.size(); i++){
             if(meshes[i].Mesh==MeshType::SPHERE){
+                sphereShader.use();
                 glm::mat4 sphrModel = glm::mat4(1.0f);
                 sphrModel = glm::translate(sphrModel,transforms[i].Position);
                 initModel(sphereShader,sphrModel,view,projection,lightColor,lightPos);
                 sphrMesh.draw();
             }
             else if(meshes[i].Mesh==MeshType::CUBE){
+                cubeShader.use();
                 glm::mat4 cubeModel = glm::mat4(1.0f);
                 cubeModel = glm::translate(cubeModel,transforms[i].Position);
                 initModel(sphereShader,cubeModel,view,projection,lightColor,lightPos);
                 cubeMesh.draw();
             }
             else if(meshes[i].Mesh==MeshType::PYRAMID){
+                pyramidShader.use();
                 glm::mat4 pyramidModel = glm::mat4(1.0f);
                 pyramidModel = glm::translate(pyramidModel,transforms[i].Position);
                 initModel(sphereShader,pyramidModel,view,projection,lightColor,lightPos);   
@@ -486,11 +488,15 @@ int main() {
                         }
                     }
                 }
+                
+                if (draggedEntityID != -1 && draggedEntityID < (int)transforms.size()) {
+                    transforms[draggedEntityID].Is = Entity::INACTIVE;
+                }
 
                 if(closestEntityID!=-1){
-                    transforms[closestEntityID].Is = Entity::ACTIVE;
                     // < ----- ACTIVE ENTITY ID ----- >
                     draggedEntityID = closestEntityID;
+                    transforms[draggedEntityID].Is = Entity::ACTIVE;
                     cout<<"ENTITY ID:"<<closestEntityID<<" ACTIVE "<<"SELECTED AT A DISTANCE OF:"<<closestDistance<<endl;
                     grabDistance = glm::distance(camera.Position, transforms[draggedEntityID].Position);
                 }
@@ -529,7 +535,6 @@ int main() {
                 }
 
                 if (closestEntityID != -1) {
-                    // Select entity and open the context menu popup for this entity!
                     if (closestEntityID == draggedEntityID) {
                         uiManager.OpenEntityPopup(closestEntityID);
                     }

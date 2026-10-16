@@ -527,6 +527,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + cursorX, ImGui::GetCursorPosY() + cursorY));
 
     ImGui::Image((void*)(intptr_t)fboTextureId, finalSize, ImVec2(0, 1), ImVec2(1, 0));
+    cursorInViewport = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
     
     // --- [NEW] ImGuizmo Rendering ---
     ImVec2 p0 = ImGui::GetItemRectMin();
@@ -571,26 +572,19 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             m_hasNewDrop = true;
             m_dropPayload = (const char*)payload->Data;
             
-            // Calculate Normalized Device Coordinates (NDC) of the mouse relative to the Viewport
             ImVec2 mousePos = ImGui::GetMousePos();
-            ImVec2 windowPos = ImGui::GetWindowPos();
-            ImVec2 windowSize = ImGui::GetWindowSize();
-            
-            m_dropNDC.x = (2.0f * (mousePos.x - windowPos.x)) / windowSize.x - 1.0f;
-            m_dropNDC.y = 1.0f - (2.0f * (mousePos.y - windowPos.y)) / windowSize.y;
+            m_dropNDC.x = (2.0f * (mousePos.x - p0.x)) / finalSize.x - 1.0f;
+            m_dropNDC.y = 1.0f - (2.0f * (mousePos.y - p0.y)) / finalSize.y;
         }
         ImGui::EndDragDropTarget();
     }
     
-    // --- Detect Clicks, Drags, and Releases in Viewport ---
     ImVec2 mousePos = ImGui::GetMousePos();
-    ImVec2 windowPos = ImGui::GetWindowPos();
-    ImVec2 windowSize = ImGui::GetWindowSize();
     
     auto calcNDC = [&]() {
         return glm::vec2(
-            (2.0f * (mousePos.x - windowPos.x)) / windowSize.x - 1.0f,
-            1.0f - (2.0f * (mousePos.y - windowPos.y)) / windowSize.y
+            (2.0f * (mousePos.x - p0.x)) / finalSize.x - 1.0f,
+            1.0f - (2.0f * (mousePos.y - p0.y)) / finalSize.y
         );
     };
 
@@ -628,23 +622,32 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     // ------------------------------------------------------------------------------------------------------------------------
     // ------------------------------------------------------------------------------------------------------------------------
 
-    // --- Viewport Context Menu ---
-    // If main.cpp told us to open the popup this frame, we trigger ImGui::OpenPopup
-    if (m_popupEntityID != -1) {
-        ImGui::OpenPopup("ViewportEntityMenu");
-    }
-    
-    //  < ---------- VIEWPORT ENTITY MENU ---------- >
     static int activePopupID = -1;
     if (m_popupEntityID != -1) {
         activePopupID = m_popupEntityID;
         ImGui::OpenPopup("ViewportEntityMenu");
-        m_popupEntityID = -1; // Reset trigger only
+        m_popupEntityID = -1;
     }
     
     if (ImGui::BeginPopup("ViewportEntityMenu")) {
         ImGui::Text("Entity ID: %d", activePopupID);
         ImGui::Separator();
+        if (physics.size() > (size_t)activePopupID && activePopupID >= 0) {
+            PhysicsComponent& phyComp = physics[activePopupID];
+            bool isRb = (phyComp.Rigidbody != Rigidbody::NO);
+
+            if (!isRb) {
+                if (ImGui::MenuItem("Rigidbody")) {
+                    SetRigidbody(phyComp);
+                }
+            } else {
+                ImGui::Separator();
+                if (ImGui::MenuItem("Remove Rigidbody")) {
+                    RemoveRigidbody(phyComp);
+                }
+            }
+            ImGui::Separator();
+        }
         if (agents.size() > (size_t)activePopupID && activePopupID >= 0) {
             auto& agent = agents[activePopupID];
             bool isAgent = (agent.Mode != AgentMode::NONE);
@@ -682,11 +685,6 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         }
         ImGui::EndPopup();
     }
-
     
-    // Reset the popup trigger so it doesn't try to open every frame
-    m_popupEntityID = -1;
-    
-    cursorInViewport = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
     ImGui::End();
 }
