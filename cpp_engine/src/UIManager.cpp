@@ -53,7 +53,7 @@ void LaunchScriptInEditor(const std::string& relativePath) {
 void EnsureScriptExists(const std::string& relativePath, const std::string& modelType, int entityID) {
     std::filesystem::path p(relativePath);
     
-    // Create the python_api directory if it doesn't exist on this machine
+    // Create the python_sscripts directory if it doesn't exist on this machine
     if (p.has_parent_path()) {
         std::filesystem::create_directories(p.parent_path());
     }
@@ -92,9 +92,9 @@ void SetAgentBrain(AgentComponent& agent, int entityID, const std::string& model
     agent.AgentModule = modelType;
 
     if (modelType == "PPO Trainer") {
-        agent.ScriptPath = "python_api/ppo_agent_" + std::to_string(entityID) + ".py";
+        agent.ScriptPath = "python_scripts/ppo_agent_" + std::to_string(entityID) + ".py";
     } else {
-        agent.ScriptPath = "python_api/dqn_agent_" + std::to_string(entityID) + ".py";
+        agent.ScriptPath = "python_scripts/dqn_agent_" + std::to_string(entityID) + ".py";
     }
 
     // Auto-create the folder and starter script if they don't exist yet
@@ -534,41 +534,65 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     drawList->AddText(ImVec2(p_bmin.x + (meshBtnSize.x - p_tsize.x) * 0.5f, p_bmax.y - p_tsize.y - 6.0f), IM_COL32(220, 240, 220, 255), p_text);
     ImGui::PopID();
 
-    ImGui::Dummy(ImVec2(0, 15));
-    ImGui::Text("PYTHON SCRIPTS");
+    ImGui::PushID("python_scripts");
+
+    ImGui::Text("Python Scripts");
     ImGui::Separator();
 
-    m_fileManager.DrawDirectoryNode("python_api");
+    if (ImGui::BeginChild("Python Scripts", ImVec2(0, 200), true)) {
+        m_fileManager.DrawDirectoryNode("python_scripts");
+    }
+    ImGui::EndChild(); 
+
     if (m_fileManager.hasDoubleClicked()) {
         LaunchScriptInEditor(m_fileManager.ConsumeDoubleClickedPath());
     }
 
-    ImVec2 scriptBtnSize(160.0f, 32.0f);
-    ImGui::Button("dqn_agent.py", scriptBtnSize);
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        LaunchScriptInEditor("python_api/dqn_agent_0.py");
-    }
+    ImGui::PopID();
 
-    ImGui::SameLine();
-    ImGui::Button("ppo_agent.py", scriptBtnSize);
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        LaunchScriptInEditor("python_api/ppo_agent_0.py");
-    }
+    ImGui::PushID("directory");
 
     ImGui::Dummy(ImVec2(0, 15));
-    ImGui::Text("CPP SCRIPTS");
+    ImGui::Text("Directory");
     ImGui::Separator();
 
-    ImGui::Button("PhysicsSystem.cpp", scriptBtnSize);
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        LaunchScriptInEditor("cpp_engine/src/Physics.h");
+    if (ImGui::BeginChild("Directory", ImVec2(0, 200), true)) {
+        m_fileManager.DrawDirectoryNode("directory");
+    }
+    ImGui::EndChild();
+
+    if (m_fileManager.hasDoubleClicked()) {
+        LaunchScriptInEditor(m_fileManager.ConsumeDoubleClickedPath());
     }
 
-    ImGui::SameLine();
-    ImGui::Button("Collision.cpp", scriptBtnSize);
-    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        LaunchScriptInEditor("cpp_engine/src/Collision.cpp");
-    }
+    ImGui::PopID();
+
+    // ImVec2 scriptBtnSize(160.0f, 32.0f);
+    // ImGui::Button("dqn_agent.py", scriptBtnSize);
+    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    //     LaunchScriptInEditor("python_scripts/dqn_agent_0.py");
+    // }
+
+    // ImGui::SameLine();
+    // ImGui::Button("ppo_agent.py", scriptBtnSize);
+    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    //     LaunchScriptInEditor("python_scripts/ppo_agent_0.py");
+    // }
+
+    // ImGui::Dummy(ImVec2(0, 15));
+    // ImGui::Text("CPP SCRIPTS");
+    // ImGui::Separator();
+
+    // ImGui::Button("PhysicsSystem.cpp", scriptBtnSize);
+    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    //     LaunchScriptInEditor("cpp_engine/src/Physics.h");
+    // }
+
+    // ImGui::SameLine();
+    // ImGui::Button("Collision.cpp", scriptBtnSize);
+    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    //     LaunchScriptInEditor("cpp_engine/src/Collision.cpp");
+    // }
 
     ImGui::End();
 

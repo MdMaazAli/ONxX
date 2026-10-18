@@ -1,3 +1,4 @@
+#include <iostream>
 #include "imgui.h"
 #include "UIManager.h"
 #include <filesystem>
@@ -6,11 +7,26 @@
 
 class FileManager{
     public:
-        void DrawDirectoryNode (const std::filesystem::path& directoryPath){
+        void DrawDirectoryNode (const std::filesystem::path& directoryPath, bool isRoot = true){
             try{
+                std::string pathStr = directoryPath.string();
+                if (isRoot) {
+                    if(ImGui::BeginPopupContextWindow("Menu")){
+                        if (ImGui::MenuItem("Create Folder")) {
+                            if (std::filesystem::create_directories(pathStr+"/New Folder")) {
+                                std::cout<<"[CREATED] NEW FOLDER"<<std::endl;
+                            }
+                        }
+                        if (ImGui::MenuItem("Create File")) {
+                            // --------------------------------------------------------------------- > EDIT
+                        }
+                        ImGui::EndPopup();
+                    }
+                }
+                
                 std::vector<std::filesystem::directory_entry> subDirectories;
                 std::vector<std::filesystem::directory_entry> files;
-
+                
                 for(const auto& entry: std::filesystem::directory_iterator(directoryPath)){
                     if (entry.is_directory()) {
                         subDirectories.push_back(entry);
@@ -22,14 +38,26 @@ class FileManager{
                 
                 for(const auto& dir: subDirectories){
                     std::string folderName = dir.path().filename().string();
-
+                    
                     ImGui::PushID(dir.path().string().c_str());
-
+                    
                     ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow;
                     bool isOpen = ImGui::TreeNodeEx(folderName.c_str(), nodeFlags);
 
+                    if (ImGui::BeginPopupContextItem("Sub Folder Directory")) {
+                        if (ImGui::MenuItem("Create Folder")) {
+                            if (std::filesystem::create_directories(dir.path().string()+"/New Folder")) {
+                                std::cout<<"[CREATED] NEW FOLDER IN : "<<dir.path().string()<<std::endl;
+                            }
+                        }
+                        if (ImGui::MenuItem("Create File")) {
+                            // ---------------------------------------------------------------- > EDIT
+                        }
+                        ImGui::EndPopup();
+                    }
+
                     if (isOpen) {
-                        DrawDirectoryNode(dir.path());
+                        DrawDirectoryNode(dir.path(), false);
                         ImGui::TreePop();
                     }
 
