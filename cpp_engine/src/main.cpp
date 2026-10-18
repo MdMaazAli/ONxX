@@ -262,7 +262,6 @@ int main() {
     float accTime = 0.0f,dt = 1.0/60.0f;
     
     static int draggedEntityID = -1;
-    static float grabDistance = 0.0f;
 
     while(!glfwWindowShouldClose(window)){
         float currFrame = glfwGetTime();
@@ -372,24 +371,26 @@ int main() {
         glm::mat4 view = glm::mat4(1.0f);
         view = camera.GetViewMatrix();
         
+        // ALL SHADERS
+        sphereShader.use();
+        cubeShader.use();
+        pyramidShader.use();
+        
         // < ------- MESH REGISTRY GO THROUGH BEFORE RENDERING ------- >
         for(size_t i=0; i<transforms.size(); i++){
             if(meshes[i].Mesh==MeshType::SPHERE){
-                sphereShader.use();
                 glm::mat4 sphrModel = glm::mat4(1.0f);
                 sphrModel = glm::translate(sphrModel,transforms[i].Position);
                 initModel(sphereShader,sphrModel,view,projection,lightColor,lightPos);
                 sphrMesh.draw();
             }
             else if(meshes[i].Mesh==MeshType::CUBE){
-                cubeShader.use();
                 glm::mat4 cubeModel = glm::mat4(1.0f);
                 cubeModel = glm::translate(cubeModel,transforms[i].Position);
                 initModel(sphereShader,cubeModel,view,projection,lightColor,lightPos);
                 cubeMesh.draw();
             }
             else if(meshes[i].Mesh==MeshType::PYRAMID){
-                pyramidShader.use();
                 glm::mat4 pyramidModel = glm::mat4(1.0f);
                 pyramidModel = glm::translate(pyramidModel,transforms[i].Position);
                 initModel(sphereShader,pyramidModel,view,projection,lightColor,lightPos);   
@@ -498,7 +499,6 @@ int main() {
                     draggedEntityID = closestEntityID;
                     transforms[draggedEntityID].Is = Entity::ACTIVE;
                     cout<<"ENTITY ID:"<<closestEntityID<<" ACTIVE "<<"SELECTED AT A DISTANCE OF:"<<closestDistance<<endl;
-                    grabDistance = glm::distance(camera.Position, transforms[draggedEntityID].Position);
                 }
                 else{
                     draggedEntityID = -1; // Deselect when clicking empty space
@@ -596,6 +596,10 @@ int main() {
         // Caps headless update speed when waiting
         std::this_thread::sleep_for(std::chrono::milliseconds(8));
     }
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
 
     glfwDestroyWindow(window);
     glfwTerminate();

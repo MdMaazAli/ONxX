@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 #include <vector>
 #include "Physics.h"
+#include "FileManager.h"
 
 enum class EngineState { EDIT_MODE, TRAINING_MODE, INFERENCE_MODE };
 
@@ -51,10 +52,6 @@ public:
     glm::vec2 GetClickNDC() const { return m_clickNDC; }
     bool HasNewRightClick() const { return m_hasNewRightClick; }
     glm::vec2 GetRightClickNDC() const { return m_rightClickNDC; }
-
-    bool IsMouseDragging() const { return m_isMouseDragging; }
-    glm::vec2 GetDragNDC() const { return m_dragNDC; }
-    bool HasMouseReleased() const { return m_hasMouseReleased; }
     
     // --- [NEW] Viewport Popup trigger ---
     void OpenEntityPopup(int entityID) { m_popupEntityID = entityID; }
@@ -64,6 +61,8 @@ private:
     void ApplyRetroHardwareTheme();
     void GenerateProceduralMetalTexture();
     void DrawWindowBackground(GLuint textureID);
+
+    FileManager m_fileManager;
     
     bool m_firstFrame;
     GLuint m_metalTexture;
@@ -82,11 +81,6 @@ private:
     glm::vec2 m_clickNDC = glm::vec2(0.0f);
     bool m_hasNewRightClick = false;
     glm::vec2 m_rightClickNDC = glm::vec2(0.0f);
-    
-    // Drag State
-    bool m_isMouseDragging = false;
-    glm::vec2 m_dragNDC = glm::vec2(0.0f);
-    bool m_hasMouseReleased = false;
     
     // Popup State
     int m_popupEntityID = -1;

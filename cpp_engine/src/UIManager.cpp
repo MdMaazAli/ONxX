@@ -36,8 +36,7 @@ void LaunchScriptInEditor(const std::string& relativePath) {
     
     // Guaranteed fallback: If Windows has zero editor associated with .py, open with notepad
     if ((INT_PTR)result <= 32) {
-        std::string fallbackCmd = "notepad.exe \"" + pathStr + "\"";
-        system(fallbackCmd.c_str());
+        ShellExecuteA(NULL, "open", "notepad.exe", ("\"" + pathStr + "\"").c_str(), NULL, SW_SHOWNORMAL);
     }
 #elif defined(__APPLE__)
     // macOS default text editor
@@ -110,7 +109,12 @@ void RemoveAgentBrain(AgentComponent& agent) {
 
 UIManager::UIManager() : m_firstFrame(true), m_metalTexture(0), m_state(EngineState::EDIT_MODE) {}
 
-UIManager::~UIManager() {}
+UIManager::~UIManager() {
+    if (m_metalTexture != 0) {
+        glDeleteTextures(1, &m_metalTexture);
+        m_metalTexture = 0;
+    }
+}
 
 void UIManager::GenerateProceduralMetalTexture() {
     int width = 512;
@@ -224,7 +228,11 @@ void UIManager::SetupDockingLayout() {
     ImGuiID left_bottom_id;
     ImGui::DockBuilderSplitNode(left_id, ImGuiDir_Down, 0.4f, &left_bottom_id, &left_id);
 
+    ImGuiID right_bottom_id;
+    ImGui::DockBuilderSplitNode(right_id, ImGuiDir_Down, 0.5f, &right_bottom_id, &right_id);
+
     ImGui::DockBuilderDockWindow("Telemetry", right_id);
+    ImGui::DockBuilderDockWindow("Assets", right_bottom_id);
     ImGui::DockBuilderDockWindow("Top Bar", top_id);
     ImGui::DockBuilderDockWindow("Console", bottom_id);
     ImGui::DockBuilderDockWindow("Hierarchy", left_id);
@@ -241,7 +249,6 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     m_hasNewDrop = false; // Reset event every frame
     m_hasNewClick = false; // Reset click every frame
     m_hasNewRightClick = false; // Reset right-click every frame
-    m_hasMouseReleased = false; // Reset release every frame
     if (m_firstFrame) {
         SetupDockingLayout();
         m_firstFrame = false;
@@ -312,17 +319,19 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     
     // --- Engraved Watermark ---
     ImDrawList* console_draw = ImGui::GetWindowDrawList();
-    ImVec2 c_pos = ImGui::GetWindowPos();
-    ImVec2 c_size = ImGui::GetWindowSize();
     const char* watermark = "ONxX";
-    ImVec2 t_size = ImGui::CalcTextSize(watermark);
+    ImFont* font = ImGui::GetFont();
     float scale = 8.0f;
-    ImVec2 center_pos = ImVec2(c_pos.x + (c_size.x - t_size.x * scale) * 0.5f, c_pos.y + (c_size.y - t_size.y * scale) * 0.5f);
+    float fontSize = ImGui::GetFontSize() * scale;
+    ImVec2 t_size = font->CalcTextSizeA(fontSize, FLT_MAX, -1.0f, watermark);
+    ImVec2 curPos = ImGui::GetCursorScreenPos();
+    ImVec2 avail = ImGui::GetContentRegionAvail();
+    ImVec2 center_pos = ImVec2(curPos.x + (avail.x - t_size.x) * 0.5f, curPos.y + (avail.y - t_size.y) * 0.5f);
     
     // Highlight (simulates light catching the bottom edge of an indentation)
-    console_draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, ImVec2(center_pos.x + 3.0f, center_pos.y + 3.0f), IM_COL32(100, 110, 100, 80), watermark);
+    console_draw->AddText(font, fontSize, ImVec2(center_pos.x + 3.0f, center_pos.y + 3.0f), IM_COL32(100, 110, 100, 80), watermark);
     // Deep shadow (simulates the depth of the stamp)
-    console_draw->AddText(ImGui::GetFont(), ImGui::GetFontSize() * scale, center_pos, IM_COL32(15, 20, 15, 200), watermark);
+    console_draw->AddText(font, fontSize, center_pos, IM_COL32(15, 20, 15, 200), watermark);
 
     // ------------------------------------------------------------------------------------------------------------------------
     // ------------------------------------------------------------------------------------------------------------------------
@@ -342,11 +351,11 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     for (size_t i = 0; i < transforms.size(); ++i) {
         ImGui::PushID((int)i);
         
-        char label[64];
+        char label[128];
         if (agents.size() > i && agents[i].AgentModule != "None") {
-            sprintf(label, "[%zu] Entity (Brain: %s)", i, agents[i].AgentModule.c_str());
+            snprintf(label, sizeof(label), "[%zu] Entity (Brain: %s)", i, agents[i].AgentModule.c_str());
         } else {
-            sprintf(label, "[%zu] Entity (Empty)", i);
+            snprintf(label, sizeof(label), "[%zu] Entity (Empty)", i);
         }
         
         // Highlight the text if its ID matches the activeEntityID from main.cpp
@@ -433,32 +442,132 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         
         ImGui::PopID();
     }
-    ImGui::Dummy(ImVec2(0, 20));
-    ImGui::Text("3D PRIMITIVES");
+
+    ImGui::End();
+
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+    // ------------------------------------------------------------------------------------------------------------------------
+
+    // ----------------------- ASSETS TAB ----------------- //
+    ImGui::Begin("Assets", nullptr, ImGuiWindowFlags_NoCollapse);
+    DrawWindowBackground(m_metalTexture);
+    
+    ImGui::Text("MESHES");
     ImGui::Separator();
     
-    ImGui::Button("Spawn Sphere", ImVec2(-1, 30));
+    ImVec2 meshBtnSize(80.0f, 80.0f);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+    ImGui::PushID("Primitive_Sphere");
+    if (ImGui::Button("##SphereBtn", meshBtnSize)) {}
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         const char* payload = "Primitive_Sphere";
         ImGui::SetDragDropPayload("3D_PRIMITIVE", payload, strlen(payload) + 1);
         ImGui::Text("Drop to spawn a new 3D object on the floor...");
         ImGui::EndDragDropSource();
     }
-    
-    ImGui::Button("Spawn Cube", ImVec2(-1, 30));
+    ImVec2 s_min = ImGui::GetItemRectMin();
+    ImVec2 s_max = ImGui::GetItemRectMax();
+    ImVec2 s_center = ImVec2(s_min.x + meshBtnSize.x * 0.5f, s_min.y + 30.0f);
+    drawList->AddCircle(s_center, 18.0f, IM_COL32(100, 255, 150, 220), 24, 2.0f);
+    drawList->AddLine(ImVec2(s_center.x - 18.0f, s_center.y), ImVec2(s_center.x + 18.0f, s_center.y), IM_COL32(80, 200, 120, 150), 1.5f);
+    const char* s_text = "Sphere";
+    ImVec2 s_tsize = ImGui::CalcTextSize(s_text);
+    drawList->AddText(ImVec2(s_min.x + (meshBtnSize.x - s_tsize.x) * 0.5f, s_max.y - s_tsize.y - 6.0f), IM_COL32(220, 240, 220, 255), s_text);
+    ImGui::PopID();
+
+    ImGui::SameLine();
+
+    ImGui::PushID("Primitive_Cube");
+    if (ImGui::Button("##CubeBtn", meshBtnSize)) {}
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         const char* payload = "Primitive_Cube";
         ImGui::SetDragDropPayload("3D_PRIMITIVE", payload, strlen(payload) + 1);
         ImGui::Text("Drop to spawn a new 3D object on the floor...");
         ImGui::EndDragDropSource();
     }
-    
-    ImGui::Button("Spawn Pyramid", ImVec2(-1, 30));
+    ImVec2 c_min = ImGui::GetItemRectMin();
+    ImVec2 c_max = ImGui::GetItemRectMax();
+    ImVec2 c_center = ImVec2(c_min.x + meshBtnSize.x * 0.5f, c_min.y + 30.0f);
+    float cs = 13.0f;
+    ImVec2 top[4] = {
+        ImVec2(c_center.x, c_center.y - cs),
+        ImVec2(c_center.x + cs, c_center.y - cs * 0.5f),
+        ImVec2(c_center.x, c_center.y),
+        ImVec2(c_center.x - cs, c_center.y - cs * 0.5f)
+    };
+    drawList->AddPolyline(top, 4, IM_COL32(100, 255, 150, 220), ImDrawFlags_Closed, 2.0f);
+    drawList->AddLine(top[2], ImVec2(c_center.x, c_center.y + cs), IM_COL32(100, 255, 150, 220), 2.0f);
+    drawList->AddLine(top[1], ImVec2(top[1].x, top[1].y + cs), IM_COL32(100, 255, 150, 220), 2.0f);
+    drawList->AddLine(top[3], ImVec2(top[3].x, top[3].y + cs), IM_COL32(100, 255, 150, 220), 2.0f);
+    drawList->AddLine(ImVec2(top[3].x, top[3].y + cs), ImVec2(c_center.x, c_center.y + cs), IM_COL32(100, 255, 150, 220), 2.0f);
+    drawList->AddLine(ImVec2(top[1].x, top[1].y + cs), ImVec2(c_center.x, c_center.y + cs), IM_COL32(100, 255, 150, 220), 2.0f);
+    const char* c_text = "Cube";
+    ImVec2 c_tsize = ImGui::CalcTextSize(c_text);
+    drawList->AddText(ImVec2(c_min.x + (meshBtnSize.x - c_tsize.x) * 0.5f, c_max.y - c_tsize.y - 6.0f), IM_COL32(220, 240, 220, 255), c_text);
+    ImGui::PopID();
+
+    ImGui::SameLine();
+
+    ImGui::PushID("Primitive_Pyramid");
+    if (ImGui::Button("##PyramidBtn", meshBtnSize)) {}
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         const char* payload = "Primitive_Pyramid";
         ImGui::SetDragDropPayload("3D_PRIMITIVE", payload, strlen(payload) + 1);
         ImGui::Text("Drop to spawn a new 3D object on the floor...");
         ImGui::EndDragDropSource();
+    }
+    ImVec2 p_bmin = ImGui::GetItemRectMin();
+    ImVec2 p_bmax = ImGui::GetItemRectMax();
+    ImVec2 p_center = ImVec2(p_bmin.x + meshBtnSize.x * 0.5f, p_bmin.y + 30.0f);
+    float ps = 15.0f;
+    ImVec2 apex = ImVec2(p_center.x, p_center.y - ps);
+    ImVec2 baseL = ImVec2(p_center.x - ps, p_center.y + ps * 0.6f);
+    ImVec2 baseM = ImVec2(p_center.x - ps * 0.2f, p_center.y + ps * 0.8f);
+    ImVec2 baseR = ImVec2(p_center.x + ps, p_center.y + ps * 0.5f);
+    drawList->AddTriangle(apex, baseL, baseM, IM_COL32(100, 255, 150, 220), 2.0f);
+    drawList->AddTriangle(apex, baseM, baseR, IM_COL32(100, 255, 150, 220), 2.0f);
+    drawList->AddLine(baseL, baseR, IM_COL32(80, 200, 120, 150), 1.5f);
+    const char* p_text = "Pyramid";
+    ImVec2 p_tsize = ImGui::CalcTextSize(p_text);
+    drawList->AddText(ImVec2(p_bmin.x + (meshBtnSize.x - p_tsize.x) * 0.5f, p_bmax.y - p_tsize.y - 6.0f), IM_COL32(220, 240, 220, 255), p_text);
+    ImGui::PopID();
+
+    ImGui::Dummy(ImVec2(0, 15));
+    ImGui::Text("PYTHON SCRIPTS");
+    ImGui::Separator();
+
+    m_fileManager.DrawDirectoryNode("python_api");
+    if (m_fileManager.hasDoubleClicked()) {
+        LaunchScriptInEditor(m_fileManager.ConsumeDoubleClickedPath());
+    }
+
+    ImVec2 scriptBtnSize(160.0f, 32.0f);
+    ImGui::Button("dqn_agent.py", scriptBtnSize);
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        LaunchScriptInEditor("python_api/dqn_agent_0.py");
+    }
+
+    ImGui::SameLine();
+    ImGui::Button("ppo_agent.py", scriptBtnSize);
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        LaunchScriptInEditor("python_api/ppo_agent_0.py");
+    }
+
+    ImGui::Dummy(ImVec2(0, 15));
+    ImGui::Text("CPP SCRIPTS");
+    ImGui::Separator();
+
+    ImGui::Button("PhysicsSystem.cpp", scriptBtnSize);
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        LaunchScriptInEditor("cpp_engine/src/Physics.h");
+    }
+
+    ImGui::SameLine();
+    ImGui::Button("Collision.cpp", scriptBtnSize);
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        LaunchScriptInEditor("cpp_engine/src/Collision.cpp");
     }
 
     ImGui::End();
@@ -473,8 +582,10 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     ImGui::Text("MODEL SCRIPTS");
     ImGui::Separator();
     
+    ImVec2 modelBtnSize(180.0f, 32.0f);
+
     // Create draggable modules
-    ImGui::Button("DQN Trainer", ImVec2(-1, 30));
+    ImGui::Button("DQN Trainer", modelBtnSize);
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         const char* payload = "DQN Trainer";
         ImGui::SetDragDropPayload("RL_MODEL", payload, strlen(payload) + 1);
@@ -482,7 +593,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         ImGui::EndDragDropSource();
     }
     
-    ImGui::Button("PPO Trainer", ImVec2(-1, 30));
+    ImGui::Button("PPO Trainer", modelBtnSize);
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         const char* payload = "PPO Trainer";
         ImGui::SetDragDropPayload("RL_MODEL", payload, strlen(payload) + 1);
@@ -494,7 +605,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     ImGui::Text("EXTRACTED BRAINS");
     ImGui::Separator();
     
-    ImGui::Button("DQN_Brain_v1.onnx", ImVec2(-1, 30));
+    ImGui::Button("DQN_Brain_v1.onnx", modelBtnSize);
     if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
         const char* payload = "DQN_Brain_v1";
         ImGui::SetDragDropPayload("RL_BRAIN", payload, strlen(payload) + 1);
@@ -603,19 +714,6 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
                 m_rightClickNDC = calcNDC();
             }
         }
-        
-        // Use IsMouseDown so we track it continuously while held
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-            if (!ImGuizmo::IsUsing()) {
-                m_isMouseDragging = true;
-                m_dragNDC = calcNDC();
-            }
-        }
-    }
-    
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        m_hasMouseReleased = true;
-        m_isMouseDragging = false;
     }
 
     // ------------------------------------------------------------------------------------------------------------------------
