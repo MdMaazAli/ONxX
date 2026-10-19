@@ -1,9 +1,11 @@
+#pragma once
+
 #include <iostream>
 #include "imgui.h"
-#include "UIManager.h"
 #include <filesystem>
 #include <string>
 #include <vector>
+#include <fstream>
 
 class FileManager{
     public:
@@ -13,12 +15,25 @@ class FileManager{
                 if (isRoot) {
                     if(ImGui::BeginPopupContextWindow("Menu")){
                         if (ImGui::MenuItem("Create Folder")) {
-                            if (std::filesystem::create_directories(pathStr+"/New Folder")) {
-                                std::cout<<"[CREATED] NEW FOLDER"<<std::endl;
+                            int count = 1;
+                            std::string folderName = "New Folder";
+
+                            while(std::filesystem::exists(pathStr+"/"+folderName)){
+                                folderName ="New Folder ("+std::to_string(count)+")";
+                                count++;
+                            }
+
+                            if (std::filesystem::create_directories(pathStr+"/"+folderName)) {
+                                std::cout<<"[CREATED] NEW FOLDER AT : "<<pathStr<<std::endl;
                             }
                         }
-                        if (ImGui::MenuItem("Create File")) {
-                            // --------------------------------------------------------------------- > EDIT
+                        if (ImGui::BeginMenu("Create File")) {
+                            if (ImGui::MenuItem("Create .py")) std::ofstream(GetUniquePath(pathStr, "New File", ".py"));
+                            if (ImGui::MenuItem("Create .cpp")) std::ofstream(GetUniquePath(pathStr, "New File", ".cpp"));
+                            if (ImGui::MenuItem("Create .c")) std::ofstream(GetUniquePath(pathStr, "New File", ".c"));
+                            if (ImGui::MenuItem("Create Notebook")) std::ofstream(GetUniquePath(pathStr, "New File", ".ipynb"));
+
+                            ImGui::EndMenu();
                         }
                         ImGui::EndPopup();
                     }
@@ -35,23 +50,36 @@ class FileManager{
                         files.push_back(entry);
                     }
                 }
-                
                 for(const auto& dir: subDirectories){
-                    std::string folderName = dir.path().filename().string();
+                    std::string subDirName = dir.path().filename().string();
+                    std::string subPathStr = dir.path().string();
                     
                     ImGui::PushID(dir.path().string().c_str());
                     
                     ImGuiTreeNodeFlags nodeFlags = ImGuiTreeNodeFlags_OpenOnArrow;
-                    bool isOpen = ImGui::TreeNodeEx(folderName.c_str(), nodeFlags);
-
+                    bool isOpen = ImGui::TreeNodeEx(subDirName.c_str(), nodeFlags);
+                    
                     if (ImGui::BeginPopupContextItem("Sub Folder Directory")) {
                         if (ImGui::MenuItem("Create Folder")) {
-                            if (std::filesystem::create_directories(dir.path().string()+"/New Folder")) {
-                                std::cout<<"[CREATED] NEW FOLDER IN : "<<dir.path().string()<<std::endl;
+                            int count = 1;
+                            std::string folderName = "New Folder";
+                            
+                            while(std::filesystem::exists(subPathStr+"/"+folderName)){
+                                folderName ="New Folder ("+std::to_string(count)+")";
+                                count++;
+                            }
+                            
+                            if (std::filesystem::create_directories(subPathStr+"/"+folderName)) {
+                                std::cout<<"[CREATED] NEW FOLDER AT : "<<subPathStr<<std::endl;
                             }
                         }
-                        if (ImGui::MenuItem("Create File")) {
-                            // ---------------------------------------------------------------- > EDIT
+                        if (ImGui::BeginMenu("Create File")){
+                            if (ImGui::MenuItem("Create .py")) std::ofstream(GetUniquePath(subPathStr, "New File", ".py"));
+                            if (ImGui::MenuItem("Create .cpp")) std::ofstream(GetUniquePath(subPathStr, "New File", ".cpp"));
+                            if (ImGui::MenuItem("Create .c")) std::ofstream(GetUniquePath(subPathStr, "New File", ".c"));
+                            if (ImGui::MenuItem("Create Notebook")) std::ofstream(GetUniquePath(subPathStr, "New File", ".ipynb"));
+                            
+                            ImGui::EndMenu();
                         }
                         ImGui::EndPopup();
                     }
@@ -99,6 +127,18 @@ class FileManager{
         std::string ConsumeDoubleClickedPath(){
             m_hasDoubleClicked = false;
             return m_selectedPath;
+        }
+
+        std::string GetUniquePath(std::string directory, std::string basename, std::string extension){
+            std::string fullPath = directory+"/"+basename+extension;
+            if (!std::filesystem::exists(directory+"/"+basename+extension)) return fullPath;
+            int count = 1;
+            
+            while(true){
+                fullPath = directory+"/"+basename+" ("+std::to_string(count)+")"+extension;
+                if (!std::filesystem::exists(fullPath)) return fullPath;
+                count++;
+            }
         }
     
     private:
