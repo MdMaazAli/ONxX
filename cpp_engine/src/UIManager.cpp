@@ -107,6 +107,28 @@ void RemoveAgentBrain(AgentComponent& agent) {
     agent.ScriptPath = "";
 }
 
+void SetScript(ScriptComponent& script, std::string path) {
+    std::filesystem::path p(path);
+    std::string ext = p.extension().string();
+
+    if (ext == ".py") script.Type = ScriptType::PYTHON;
+    else if (ext == ".cpp") script.Type = ScriptType::CPP;
+    else script.Type = ScriptType::NONE;
+
+    script.ScriptPath = path;
+    script.ScriptName = p.filename().string();
+    script.Is = Script::ENABLED;
+
+    std::cout<<"[ATTACHED] SCRIPT AT PATH : "<<path<<std::endl;
+}
+
+void RemoveScript(ScriptComponent& script) {
+    script.Type = ScriptType::NONE;
+    script.ScriptPath = "";
+    script.ScriptName = "None";
+    script.Is = Script::DISABLED;
+}
+
 UIManager::UIManager() : m_firstFrame(true), m_metalTexture(0), m_state(EngineState::EDIT_MODE) {}
 
 UIManager::~UIManager() {
@@ -232,6 +254,7 @@ void UIManager::SetupDockingLayout() {
     ImGui::DockBuilderSplitNode(right_id, ImGuiDir_Down, 0.5f, &right_bottom_id, &right_id);
 
     ImGui::DockBuilderDockWindow("Telemetry", right_id);
+    ImGui::DockBuilderDockWindow("Inspector", right_id);
     ImGui::DockBuilderDockWindow("Assets", right_bottom_id);
     ImGui::DockBuilderDockWindow("Top Bar", top_id);
     ImGui::DockBuilderDockWindow("Console", bottom_id);
@@ -242,7 +265,7 @@ void UIManager::SetupDockingLayout() {
     ImGui::DockBuilderFinish(dockspace_id);
 }
 
-void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, int activeEntityID) 
+void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, std::vector<ScriptComponent>& scripts, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, int activeEntityID) 
 {
     ImGuizmo::BeginFrame();
 
@@ -272,6 +295,143 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     }
     ImGui::Separator();
     ImGui::Text("FPS: %.1f", framerate);
+    ImGui::End();
+
+    // ----------------------- INSPECTOR TAB ----------------- //
+    ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_NoCollapse);
+    DrawWindowBackground(m_metalTexture);
+
+    if (activeEntityID != -1 && activeEntityID < (int)transforms.size()) {
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), "Entity [%d]", activeEntityID);
+        ImGui::SameLine();
+        ImGui::TextDisabled("(Selected)");
+
+        ImGui::SameLine(ImGui::GetWindowWidth() - 85);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.15f, 0.15f, 0.8f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.2f, 0.2f, 0.9f));
+        if (ImGui::Button("Delete", ImVec2(70, 0))) {
+            m_deleteRequestID = activeEntityID;
+        }
+        ImGui::PopStyleColor(2);
+
+        ImGui::Separator();
+
+        // < ------------------- TRANSFORM ------------------- >
+        if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::DragFloat3("Position", &transforms[activeEntityID].Position.x, 0.05f);
+            ImGui::DragFloat3("Size", &transforms[activeEntityID].Size.x, 0.05f, 0.01f, 100.0f);
+        }
+
+        // < ------------------- RIGIDBODY ------------------- >
+        if (physics.size() > (size_t)activeEntityID) {
+            auto& phyComp = physics[activeEntityID];
+            bool hasRb = (phyComp.Rigidbody != Rigidbody::NO);
+
+            if (ImGui::CollapsingHeader("Rigidbody", ImGuiTreeNodeFlags_DefaultOpen)) {
+                if (ImGui::Checkbox("Enable Rigidbody", &hasRb)) {
+                    if (hasRb) SetRigidbody(phyComp);
+                    else RemoveRigidbody(phyComp);
+                }
+
+                if (hasRb) {
+                    ImGui::DragFloat("Mass", &phyComp.Mass, 0.1f, 0.01f, 1000.0f);
+                }
+            }
+        }
+
+        // < ------------------- AI BRAIN ------------------- >
+        if (agents.size() > (size_t)activeEntityID) {
+            auto& agent = agents[activeEntityID];
+            bool hasAgent = (agent.Mode != AgentMode::NONE);
+
+            if (ImGui::CollapsingHeader("AI Agent Brain", ImGuiTreeNodeFlags_DefaultOpen)) {
+                if (hasAgent) {
+                    ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), "Module: %s", agent.AgentModule.c_str());
+                    ImGui::TextDisabled("Script: %s", agent.ScriptPath.c_str());
+
+                    if (ImGui::Button("Edit Brain Script")) {
+                        LaunchScriptInEditor(agent.ScriptPath);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Remove Brain")) {
+                        RemoveAgentBrain(agent);
+                    }
+
+                    if (ImGui::BeginMenu("Change Model")) {
+                        if (ImGui::MenuItem("DQN Trainer", nullptr, agent.AgentModule == "DQN Trainer")) {
+                            SetAgentBrain(agent, activeEntityID, "DQN Trainer");
+                        }
+                        if (ImGui::MenuItem("PPO Trainer", nullptr, agent.AgentModule == "PPO Trainer")) {
+                            SetAgentBrain(agent, activeEntityID, "PPO Trainer");
+                        }
+                        ImGui::EndMenu();
+                    }
+                } else {
+                    ImGui::TextDisabled("No AI Brain attached.");
+                    if (ImGui::Button("Attach DQN Trainer")) {
+                        SetAgentBrain(agent, activeEntityID, "DQN Trainer");
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Attach PPO Trainer")) {
+                        SetAgentBrain(agent, activeEntityID, "PPO Trainer");
+                    }
+                }
+            }
+        }
+
+        // < ------------------- SCRIPT ------------------- >
+        if (scripts.size() > (size_t)activeEntityID) {
+            auto& script = scripts[activeEntityID];
+            bool hasScript = (script.Type != ScriptType::NONE);
+
+            if (ImGui::CollapsingHeader("Script Component", ImGuiTreeNodeFlags_DefaultOpen)) {
+                if (hasScript) {
+                    const char* langStr = (script.Type == ScriptType::PYTHON) ? "[Python]" : "[C++]";
+                    ImVec4 langColor = (script.Type == ScriptType::PYTHON) 
+                        ? ImVec4(0.2f, 0.8f, 1.0f, 1.0f) 
+                        : ImVec4(1.0f, 0.6f, 0.2f, 1.0f);
+
+                    ImGui::TextColored(langColor, "%s", langStr);
+                    ImGui::SameLine();
+                    ImGui::Text("%s", script.ScriptName.c_str());
+
+                    bool isEnabled = (script.Is == Script::ENABLED);
+                    if (ImGui::Checkbox("Enabled", &isEnabled)) {
+                        script.Is = isEnabled ? Script::ENABLED : Script::DISABLED;
+                    }
+
+                    ImGui::TextDisabled("Path: %s", script.ScriptPath.c_str());
+
+                    if (ImGui::Button("Edit Script")) {
+                        LaunchScriptInEditor(script.ScriptPath);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Remove Script")) {
+                        RemoveScript(script);
+                    }
+                } else {
+                    ImGui::TextDisabled("No script attached.");
+                    ImGui::TextDisabled("Drag & drop a script from Assets here.");
+                }
+            }
+        }
+
+        // Drag & Drop Target directly inside Inspector
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_FILE")) {
+                const char* filepath = (const char*)payload->Data;
+                SetScript(scripts[activeEntityID], filepath);
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+    } else {
+        ImGui::Dummy(ImVec2(0, 30));
+        ImGui::TextDisabled("No entity selected.");
+        ImGui::TextDisabled("Select an entity in the Hierarchy or");
+        ImGui::TextDisabled("click it in the 3D Viewport to inspect.");
+    }
+
     ImGui::End();
 
     // ------------------------------------------------------------------------------------------------------------------------
@@ -352,7 +512,14 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         ImGui::PushID((int)i);
         
         char label[128];
-        if (agents.size() > i && agents[i].AgentModule != "None") {
+        bool hasBrain = (agents.size() > i && agents[i].AgentModule != "None");
+        bool hasScript = (scripts.size() > i && scripts[i].Type != ScriptType::NONE);
+
+        if (hasBrain && hasScript) {
+            snprintf(label, sizeof(label), "[%zu] Entity (%s | %s)", i, agents[i].AgentModule.c_str(), scripts[i].ScriptName.c_str());
+        } else if (hasScript) {
+            snprintf(label, sizeof(label), "[%zu] Entity (Script: %s)", i, scripts[i].ScriptName.c_str());
+        } else if (hasBrain) {
             snprintf(label, sizeof(label), "[%zu] Entity (Brain: %s)", i, agents[i].AgentModule.c_str());
         } else {
             snprintf(label, sizeof(label), "[%zu] Entity (Empty)", i);
@@ -415,6 +582,23 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
                     }
                 }
             }
+            if (scripts.size() > i && scripts[i].Type != ScriptType::NONE) {
+                auto& script = scripts[i];
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "Script: %s", script.ScriptName.c_str());
+
+                bool isEnabled = (script.Is == Script::ENABLED);
+                if (ImGui::Checkbox("Enabled", &isEnabled)) {
+                    script.Is = isEnabled ? Script::ENABLED : Script::DISABLED;
+                }
+
+                if (ImGui::MenuItem("Edit Script")) {
+                    LaunchScriptInEditor(script.ScriptPath);
+                }
+                if (ImGui::MenuItem("Remove Script")) {
+                    RemoveScript(script);
+                }
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Delete")) {
                 m_deleteRequestID = (int)i;
@@ -435,6 +619,12 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
                 if (agents.size() > i) {
                     agents[i].Mode = AgentMode::INFERENCE;
                     agents[i].AgentModule = moduleName;
+                }
+            }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_FILE")){
+                const char* filepath = (const char*)payload->Data;
+                if (scripts.size() > i) {
+                    SetScript(scripts[i], filepath);
                 }
             }
             ImGui::EndDragDropTarget();
@@ -567,33 +757,6 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
 
     ImGui::PopID();
 
-    // ImVec2 scriptBtnSize(160.0f, 32.0f);
-    // ImGui::Button("dqn_agent.py", scriptBtnSize);
-    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-    //     LaunchScriptInEditor("python_scripts/dqn_agent_0.py");
-    // }
-
-    // ImGui::SameLine();
-    // ImGui::Button("ppo_agent.py", scriptBtnSize);
-    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-    //     LaunchScriptInEditor("python_scripts/ppo_agent_0.py");
-    // }
-
-    // ImGui::Dummy(ImVec2(0, 15));
-    // ImGui::Text("CPP SCRIPTS");
-    // ImGui::Separator();
-
-    // ImGui::Button("PhysicsSystem.cpp", scriptBtnSize);
-    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-    //     LaunchScriptInEditor("cpp_engine/src/Physics.h");
-    // }
-
-    // ImGui::SameLine();
-    // ImGui::Button("Collision.cpp", scriptBtnSize);
-    // if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-    //     LaunchScriptInEditor("cpp_engine/src/Collision.cpp");
-    // }
-
     ImGui::End();
 
     // ------------------------------------------------------------------------------------------------------------------------
@@ -711,6 +874,12 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             m_dropNDC.x = (2.0f * (mousePos.x - p0.x)) / finalSize.x - 1.0f;
             m_dropNDC.y = 1.0f - (2.0f * (mousePos.y - p0.y)) / finalSize.y;
         }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_FILE")) {
+            const char* filepath = (const char*)payload->Data;
+            if (activeEntityID != -1 && activeEntityID < (int)scripts.size()) {
+                SetScript(scripts[activeEntityID], filepath);
+            }
+        }
         ImGui::EndDragDropTarget();
     }
     
@@ -798,6 +967,23 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
                 ImGui::Separator();
                 if (ImGui::MenuItem("Remove Agent Component")) {
                     RemoveAgentBrain(agent);
+                }
+            }
+            if (activePopupID != -1 && (size_t)activePopupID < scripts.size() && scripts[activePopupID].Type != ScriptType::NONE) {
+                auto& script = scripts[activePopupID];
+                ImGui::Separator();
+                ImGui::TextColored(ImVec4(0.2f, 0.8f, 1.0f, 1.0f), "Script: %s", script.ScriptName.c_str());
+
+                bool isEnabled = (script.Is == Script::ENABLED);
+                if (ImGui::Checkbox("Enabled", &isEnabled)) {
+                    script.Is = isEnabled ? Script::ENABLED : Script::DISABLED;
+                }
+
+                if (ImGui::MenuItem("Edit Script")) {
+                    LaunchScriptInEditor(script.ScriptPath);
+                }
+                if (ImGui::MenuItem("Remove Script")) {
+                    RemoveScript(script);
                 }
             }
         }

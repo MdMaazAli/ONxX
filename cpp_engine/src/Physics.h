@@ -15,6 +15,8 @@ enum class Entity{INACTIVE, ACTIVE};
 enum class AgentMode{NONE, TRAINING, INFERENCE};
 enum class MeshType{MESH, SPHERE, CUBE, PYRAMID};
 enum class Rigidbody{YES, NO};
+enum class ScriptType{PYTHON, CPP, NONE};
+enum class Script{DISABLED, ENABLED};
 
 struct AgentComponent{
     AgentMode Mode = AgentMode::NONE;
@@ -40,21 +42,28 @@ struct PhysicsComponent{
     float Mass;
 };
 
+struct ScriptComponent{
+    ScriptType Type = ScriptType::NONE;
+    std::string ScriptPath = "";
+    std::string ScriptName = "None";
+    Script Is = Script::ENABLED;
+};
+
 // Physics System class which handle most of the physics related stuff
 class PhysicsSystem{
     public:
         static void Update(std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, float dt){
             // seq loop over the stride(clearing it out)
             for(size_t i=0; i<transforms.size(); i++){
+                transforms[i].Position += physics[i].Velocity*dt;
+                
                 if(physics[i].Rigidbody == Rigidbody::YES){
-                    if(transforms[i].Position.y>1.0f){
+                    if(transforms[i].Position.y>0.0f){
                         physics[i].Velocity.y -= 9.81f*dt;
                     }
                     
-                    transforms[i].Position += physics[i].Velocity*dt;
-                    
-                    if(transforms[i].Position.y<1.0f){
-                        transforms[i].Position.y = 1.0f;
+                    if(transforms[i].Position.y<0.0f){
+                        transforms[i].Position.y = 0.0f;
                         
                         if(physics[i].Velocity.y<0.0f){
                             physics[i].Velocity.y = 0.0f;

@@ -20,6 +20,7 @@ public:
                 std::vector<TransformComponent>& transforms, 
                 std::vector<PhysicsComponent>& physics, 
                 std::vector<AgentComponent>& agents,
+                std::vector<ScriptComponent>& scripts,
                 float framerate,
                 bool& cursorInViewport,
                 const glm::mat4& view,

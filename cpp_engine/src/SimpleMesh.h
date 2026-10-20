@@ -57,12 +57,12 @@ class SimpleMesh{
         SimpleMesh(string type){
             if(type=="grid"){
                 float vertices[] = {
-                    -100.0f, 1.0f, -100.0f, // Top-left
-                    100.0f, 1.0f, -100.0f, // Top-right
-                    -100.0f, 1.0f,  100.0f, // Bottom-left
-                    -100.0f, 1.0f,  100.0f, // Bottom-left
-                    100.0f, 1.0f, -100.0f, // Top-right
-                    100.0f, 1.0f,  100.0f  // Bottom-right
+                    -100.0f, 0.0f, -100.0f,
+                    100.0f, 0.0f, -100.0f,
+                    -100.0f, 0.0f,  100.0f,
+                    -100.0f, 0.0f,  100.0f,
+                    100.0f, 0.0f, -100.0f,
+                    100.0f, 0.0f,  100.0f
                 };
                 vertexCount=36;
                 setupGridBuffers(vertices,sizeof(vertices));

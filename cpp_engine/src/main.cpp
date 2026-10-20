@@ -34,7 +34,7 @@
 const unsigned int SCR_WIDTH = 1920;
 const unsigned int SCR_HEIGHT = 1080;
 
-Camera camera(glm::vec3(0.0f,0.0f,15.0f));
+Camera camera(glm::vec3(0.0f, 6.0f, 12.0f), glm::vec3(0.0f, 1.0f, 0.0f), -90.0f, -25.0f);
 
 float xPos = 0.0f;
 float zPos = 0.0f;
@@ -227,18 +227,21 @@ int main() {
     std::vector<TransformComponent> transforms;
     std::vector<PhysicsComponent> physics;
     std::vector<AgentComponent> agents;
-
+    std::vector<ScriptComponent> scripts;
+    
     // SNAPSHOT STATE ECS DIRECTORY (for saving/restoring state)
     std::vector<MeshComponent> snapshotMeshes;
     std::vector<TransformComponent> snapshotTransforms;
     std::vector<PhysicsComponent> snapshotPhysics;
     std::vector<AgentComponent> snapshotAgents;
+    std::vector<ScriptComponent> snapshotScripts;
 
     // entitiy = 0 ------ > RL_agent/player
     meshes.push_back({MeshType::SPHERE});
-    transforms.push_back({Entity::ACTIVE, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
+    transforms.push_back({Entity::ACTIVE, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
     physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
     agents.push_back({AgentMode::NONE,"None"});
+    scripts.push_back({ScriptType::NONE, "", "None", Script::ENABLED});
 
     // < ------------------- SNAPSHOT ------------------- >
     auto TakeSnapshot = [&]() {
@@ -246,6 +249,7 @@ int main() {
         snapshotTransforms = transforms;
         snapshotPhysics = physics;
         snapshotAgents = agents;
+        snapshotScripts = scripts;
 
         std::cout<<"[SNAPSHOT] TRANSFORM SIZE : "<<transforms.size()<<endl;
     };
@@ -255,6 +259,7 @@ int main() {
         transforms = snapshotTransforms;
         physics = snapshotPhysics;
         agents = snapshotAgents;
+        scripts = snapshotScripts;
 
         std::cout<<"[RESTORE] TRANSFORM SIZE : "<<transforms.size()<<endl;
     };
@@ -421,7 +426,7 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        uiManager.Render(window, fbo.textureId, transforms, physics, agents, io.Framerate, cursorInViewport, view, projection, draggedEntityID);
+        uiManager.Render(window, fbo.textureId, transforms, physics, agents, scripts, io.Framerate, cursorInViewport, view, projection, draggedEntityID);
         ImGui::Render();
 
         // -------------------------------------------------------------------------------------------------------------------    
@@ -450,6 +455,7 @@ int main() {
             transforms.erase(transforms.begin() + deleteID);
             physics.erase(physics.begin() + deleteID);
             agents.erase(agents.begin() + deleteID);
+            scripts.erase(scripts.begin() + deleteID);
 
             draggedEntityID = -1;
 
@@ -561,7 +567,7 @@ int main() {
                 ray_world = glm::normalize(ray_world); // This is our 3D Laser!
                 
                 // Intersect the laser with the Floor (y = 1.0f)
-                glm::vec3 spawnPoint = Collision::RayIntersectsFloor(camera.Position, ray_world, 1.0f);
+                glm::vec3 spawnPoint = Collision::RayIntersectsFloor(camera.Position, ray_world, 0.0f);
                 
                 // Create the new Entity at the exact drop location!
                 MeshType typeToSpawn = MeshType::SPHERE;
@@ -578,6 +584,7 @@ int main() {
                 transforms.push_back({Entity::INACTIVE, spawnPoint, glm::vec3(1.0f, 1.0f, 1.0f)});
                 physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
                 agents.push_back({AgentMode::NONE, "None"});
+                scripts.push_back({ScriptType::NONE, "", "None", Script::ENABLED});
 
                 std::cout << "[SPAWN] New Entity created at X:" << spawnPoint.x << " Z:" << spawnPoint.z << std::endl;
             
