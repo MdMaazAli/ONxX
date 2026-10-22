@@ -28,6 +28,7 @@
 
                 // 4. Define All Include Search Paths
                 "-I", "${workspaceFolder}/cpp_engine/include", 
+                "-I", "${workspaceFolder}/cpp_engine/include/lua",
                 "-I", "${workspaceFolder}/cpp_engine/imgui",   
                 "-I", "${workspaceFolder}/cpp_engine/imgui/backends", 
                 "-I", "${workspaceFolder}/cpp_engine/src",     
@@ -44,7 +45,8 @@
                 "-lopengl32",
                 "-lgdi32",
                 "-lws2_32",
-                "-lshell32"
+                "-lshell32",
+                "-lluajit"
             ],
             "group": {
                 "kind": "build",
