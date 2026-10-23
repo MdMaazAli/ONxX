@@ -29,6 +29,8 @@
 #include "Physics.h"
 #include "Collision.h"
 
+#include "LuaRunner.h"
+
 #pragma comment(lib, "dbghelp.lib")
 
 const unsigned int SCR_WIDTH = 1920;
@@ -222,26 +224,86 @@ int main() {
     // -------------------------------------------------------------------------------------------------------------------------
     // -------------------------------------------------------------------------------------------------------------------------
 
-    // parallel vector ecs directory to handle the physics of entities
+    // Hot Simulation Domain (dense POD math)
     std::vector<MeshComponent> meshes;
     std::vector<TransformComponent> transforms;
     std::vector<PhysicsComponent> physics;
     std::vector<AgentComponent> agents;
     std::vector<ScriptComponent> scripts;
-    
+
+    // Cold Metadata Domain (Authoring UUID, Decoupled Names)
+    std::vector<EntityMetadata> coldData;
+
+    // Slot Map Domain (Generational safety, zero memory shifting)
+    std::vector<Slot> slots;
+    std::vector<uint32_t> freeSlots;
+    std::unordered_map<uint64_t, SlotKey> uuidToSlotKey;
+
+    auto AllocateEntity = [&](const EntityMetadata& meta,
+                              const MeshComponent& mesh,
+                              const TransformComponent& transform,
+                              const PhysicsComponent& phys,
+                              const AgentComponent& agent,
+                              const ScriptComponent& script) -> SlotKey {
+        SlotKey key;
+        if (!freeSlots.empty()) {
+            key.index = freeSlots.back();
+            freeSlots.pop_back();
+            key.generation = slots[key.index].generation;
+            slots[key.index].alive = true;
+
+            meshes[key.index] = mesh;
+            transforms[key.index] = transform;
+            physics[key.index] = phys;
+            agents[key.index] = agent;
+            scripts[key.index] = script;
+            coldData[key.index] = meta;
+        } else {
+            key.index = static_cast<uint32_t>(transforms.size());
+            key.generation = 1;
+            slots.push_back({1, true});
+
+            meshes.push_back(mesh);
+            transforms.push_back(transform);
+            physics.push_back(phys);
+            agents.push_back(agent);
+            scripts.push_back(script);
+            coldData.push_back(meta);
+        }
+        uuidToSlotKey[meta.uuid] = key;
+        return key;
+    };
+
+    auto FreeEntity = [&](uint32_t index) {
+        if (index >= slots.size() || !slots[index].alive) return;
+        
+        uuidToSlotKey.erase(coldData[index].uuid);
+        slots[index].alive = false;
+        slots[index].generation++; // Invalidate stale SlotKeys
+        transforms[index].Is = Entity::INACTIVE;
+        freeSlots.push_back(index);
+    };
+
     // SNAPSHOT STATE ECS DIRECTORY (for saving/restoring state)
     std::vector<MeshComponent> snapshotMeshes;
     std::vector<TransformComponent> snapshotTransforms;
     std::vector<PhysicsComponent> snapshotPhysics;
     std::vector<AgentComponent> snapshotAgents;
     std::vector<ScriptComponent> snapshotScripts;
+    std::vector<EntityMetadata> snapshotColdData;
+    std::vector<Slot> snapshotSlots;
+    std::vector<uint32_t> snapshotFreeSlots;
+    std::unordered_map<uint64_t, SlotKey> snapshotUuidToSlotKey;
 
-    // entitiy = 0 ------ > RL_agent/player
-    meshes.push_back({MeshType::SPHERE});
-    transforms.push_back({Entity::ACTIVE, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f)});
-    physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
-    agents.push_back({AgentMode::NONE,"None"});
-    scripts.push_back({ScriptType::NONE, "", "None", Script::ENABLED});
+    // entity = 0 ------ > RL_agent
+    AllocateEntity(
+        { GenerateUUID(), "AGENT ENTITY" },
+        { MeshType::SPHERE },
+        { Entity::ACTIVE, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 1.0f) },
+        { Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f },
+        { AgentMode::NONE, "None" },
+        { ScriptType::LUA, "", "", Script::DISABLED }
+    );
 
     // < ------------------- SNAPSHOT ------------------- >
     auto TakeSnapshot = [&]() {
@@ -250,6 +312,10 @@ int main() {
         snapshotPhysics = physics;
         snapshotAgents = agents;
         snapshotScripts = scripts;
+        snapshotColdData = coldData;
+        snapshotSlots = slots;
+        snapshotFreeSlots = freeSlots;
+        snapshotUuidToSlotKey = uuidToSlotKey;
 
         std::cout<<"[SNAPSHOT] TRANSFORM SIZE : "<<transforms.size()<<endl;
     };
@@ -260,9 +326,16 @@ int main() {
         physics = snapshotPhysics;
         agents = snapshotAgents;
         scripts = snapshotScripts;
+        coldData = snapshotColdData;
+        slots = snapshotSlots;
+        freeSlots = snapshotFreeSlots;
+        uuidToSlotKey = snapshotUuidToSlotKey;
 
         std::cout<<"[RESTORE] TRANSFORM SIZE : "<<transforms.size()<<endl;
     };
+
+    LuaRunner luaRunner;
+    luaRunner.init();
     
     float accTime = 0.0f,dt = 1.0/60.0f;
     
@@ -354,12 +427,29 @@ int main() {
         // -------------------------------------------------------------------------------------------------------------------
         // -------------------------------------------------------------------------------------------------------------------
 
+        if (currState != EngineState::EDIT_MODE) {
+            
+            for (size_t i = 0; i < transforms.size(); ++i) {
+                if (!slots[i].alive) continue;
+                SlotKey key = { (uint32_t)i, slots[i].generation };
+                if (scripts[i].Type == ScriptType::LUA && scripts[i].Is == Script::ENABLED && !scripts[i].ScriptPath.empty()) {
+                    if (!luaRunner.IsLoaded(key) || luaRunner.GetScriptPath(key) != scripts[i].ScriptPath) {
+                        luaRunner.LoadScript(key, scripts[i].ScriptPath);
+                    }
+                    luaRunner.Tick(key, transforms[i], physics[i], dt);
+                } else if (luaRunner.IsLoaded(key)) {
+                    luaRunner.UnloadScript(key);
+                }
+            }
+            
+        }
+
         // < -------------------- physics loop ------------------ >
         if (currState != EngineState::EDIT_MODE){
 
             while(accTime>=dt){
                 // < ----- gravity ----- >
-                PhysicsSystem::Update(transforms, physics, dt);
+                PhysicsSystem::Update(transforms, physics, slots, dt);
                 accTime -= dt;
             }
 
@@ -383,6 +473,7 @@ int main() {
         
         // < ------- MESH REGISTRY GO THROUGH BEFORE RENDERING ------- >
         for(size_t i=0; i<transforms.size(); i++){
+            if(!slots[i].alive) continue;
             if(meshes[i].Mesh==MeshType::SPHERE){
                 glm::mat4 sphrModel = glm::mat4(1.0f);
                 sphrModel = glm::translate(sphrModel,transforms[i].Position);
@@ -426,7 +517,7 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        uiManager.Render(window, fbo.textureId, transforms, physics, agents, scripts, io.Framerate, cursorInViewport, view, projection, draggedEntityID);
+        uiManager.Render(window, fbo.textureId, transforms, physics, agents, scripts, coldData, slots, io.Framerate, cursorInViewport, view, projection, draggedEntityID);
         ImGui::Render();
 
         // -------------------------------------------------------------------------------------------------------------------    
@@ -435,9 +526,9 @@ int main() {
 
         // < ------- ACTIVE/INACTIVE ENTITY HANDLER ------ >
         int hierarchyClickID = uiManager.ConsumeHierarchySelection();
-        if (hierarchyClickID != -1) {
+        if (hierarchyClickID != -1 && slots[hierarchyClickID].alive) {
             // Turn off the old entity if there was one
-            if (draggedEntityID != -1) {
+            if (draggedEntityID != -1 && slots[draggedEntityID].alive) {
                 transforms[draggedEntityID].Is = Entity::INACTIVE;
             }
             
@@ -450,16 +541,13 @@ int main() {
         
         // < ------- DELETE ENTITY HANDLER ------ >
         int deleteID = uiManager.ConsumeDeleteRequest();
-        if(deleteID >= 0 && deleteID < (int)transforms.size()){
-            meshes.erase(meshes.begin() + deleteID);
-            transforms.erase(transforms.begin() + deleteID);
-            physics.erase(physics.begin() + deleteID);
-            agents.erase(agents.begin() + deleteID);
-            scripts.erase(scripts.begin() + deleteID);
-
+        if(deleteID >= 0 && deleteID < (int)transforms.size() && slots[deleteID].alive){
+            SlotKey key = { (uint32_t)deleteID, slots[deleteID].generation };
+            luaRunner.UnloadScript(key);
+            FreeEntity((uint32_t)deleteID);
             draggedEntityID = -1;
 
-            std::cout<<"[DELETE] ENTITY "<<deleteID<<" REMOVED"<<endl;
+            std::cout<<"[DELETE] ENTITY "<<deleteID<<" FREED (NO SHIFTING)"<<endl;
         }
 
         // -------------------------------------------------------------------------------------------------------------------    
@@ -482,6 +570,7 @@ int main() {
                 float closestDistance = 99999.0f;
                 
                 for(size_t i=0; i<transforms.size(); i++){
+                    if(!slots[i].alive) continue;
                     glm::vec3 halfSize = transforms[i].Size/2.0f;
                     glm::vec3 boxMin = transforms[i].Position-halfSize;
                     glm::vec3 boxMax = transforms[i].Position+halfSize;
@@ -496,11 +585,11 @@ int main() {
                     }
                 }
                 
-                if (draggedEntityID != -1 && draggedEntityID < (int)transforms.size()) {
+                if (draggedEntityID != -1 && draggedEntityID < (int)transforms.size() && slots[draggedEntityID].alive) {
                     transforms[draggedEntityID].Is = Entity::INACTIVE;
                 }
 
-                if(closestEntityID!=-1){
+                if(closestEntityID!=-1 && slots[closestEntityID].alive){
                     // < ----- ACTIVE ENTITY ID ----- >
                     draggedEntityID = closestEntityID;
                     transforms[draggedEntityID].Is = Entity::ACTIVE;
@@ -527,6 +616,7 @@ int main() {
                 float closestDistance = 99999.0f;
 
                 for (size_t i = 0; i < transforms.size(); i++) {
+                    if (!slots[i].alive) continue;
                     glm::vec3 halfSize = transforms[i].Size / 2.0f;
                     glm::vec3 boxMin = transforms[i].Position - halfSize;
                     glm::vec3 boxMax = transforms[i].Position + halfSize;
@@ -580,11 +670,14 @@ int main() {
                 if(payloadMesh=="Primitive_Pyramid"){
                     typeToSpawn = MeshType::PYRAMID;
                 }
-                meshes.push_back({typeToSpawn});
-                transforms.push_back({Entity::INACTIVE, spawnPoint, glm::vec3(1.0f, 1.0f, 1.0f)});
-                physics.push_back({Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f});
-                agents.push_back({AgentMode::NONE, "None"});
-                scripts.push_back({ScriptType::NONE, "", "None", Script::ENABLED});
+                AllocateEntity(
+                    { GenerateUUID(), "Entity" },
+                    { typeToSpawn },
+                    { Entity::INACTIVE, spawnPoint, glm::vec3(1.0f, 1.0f, 1.0f) },
+                    { Rigidbody::NO, glm::vec3(0.0f, 0.0f, 0.0f), 1.0f },
+                    { AgentMode::NONE, "None" },
+                    { ScriptType::NONE, "", "None", Script::ENABLED }
+                );
 
                 std::cout << "[SPAWN] New Entity created at X:" << spawnPoint.x << " Z:" << spawnPoint.z << std::endl;
             
@@ -603,6 +696,8 @@ int main() {
         // Caps headless update speed when waiting
         std::this_thread::sleep_for(std::chrono::milliseconds(8));
     }
+
+    luaRunner.shutdown();
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

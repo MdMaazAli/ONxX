@@ -29,9 +29,10 @@ class FileManager{
                         }
                         if (ImGui::BeginMenu("Create File")) {
                             if (ImGui::MenuItem("Create .py")) std::ofstream(GetUniquePath(pathStr, "New File", ".py"));
-                            if (ImGui::MenuItem("Create .cpp")) std::ofstream(GetUniquePath(pathStr, "New File", ".cpp"));
-                            if (ImGui::MenuItem("Create .c")) std::ofstream(GetUniquePath(pathStr, "New File", ".c"));
-                            if (ImGui::MenuItem("Create Notebook")) std::ofstream(GetUniquePath(pathStr, "New File", ".ipynb"));
+                            if (ImGui::MenuItem("Create .lua")) std::ofstream(GetUniquePath(pathStr, "New File", ".lua"));
+                            // if (ImGui::MenuItem("Create .cpp")) std::ofstream(GetUniquePath(pathStr, "New File", ".cpp"));
+                            // if (ImGui::MenuItem("Create .c")) std::ofstream(GetUniquePath(pathStr, "New File", ".c"));
+                            // if (ImGui::MenuItem("Create Notebook")) std::ofstream(GetUniquePath(pathStr, "New File", ".ipynb"));
 
                             ImGui::EndMenu();
                         }
@@ -75,9 +76,10 @@ class FileManager{
                         }
                         if (ImGui::BeginMenu("Create File")){
                             if (ImGui::MenuItem("Create .py")) std::ofstream(GetUniquePath(subPathStr, "New File", ".py"));
-                            if (ImGui::MenuItem("Create .cpp")) std::ofstream(GetUniquePath(subPathStr, "New File", ".cpp"));
-                            if (ImGui::MenuItem("Create .c")) std::ofstream(GetUniquePath(subPathStr, "New File", ".c"));
-                            if (ImGui::MenuItem("Create Notebook")) std::ofstream(GetUniquePath(subPathStr, "New File", ".ipynb"));
+                            if (ImGui::MenuItem("Create .lua")) std::ofstream(GetUniquePath(subPathStr, "New File", ".lua"));
+                            // if (ImGui::MenuItem("Create .cpp")) std::ofstream(GetUniquePath(subPathStr, "New File", ".cpp"));
+                            // if (ImGui::MenuItem("Create .c")) std::ofstream(GetUniquePath(subPathStr, "New File", ".c"));
+                            // if (ImGui::MenuItem("Create Notebook")) std::ofstream(GetUniquePath(subPathStr, "New File", ".ipynb"));
                             
                             ImGui::EndMenu();
                         }
