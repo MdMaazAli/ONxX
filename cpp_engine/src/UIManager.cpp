@@ -113,6 +113,7 @@ void SetScript(ScriptComponent& script, std::string path) {
 
     if (ext == ".py") script.Type = ScriptType::PYTHON;
     else if (ext == ".cpp") script.Type = ScriptType::CPP;
+    else if (ext == ".lua") script.Type = ScriptType::LUA;
     else script.Type = ScriptType::NONE;
 
     script.ScriptPath = path;
@@ -265,7 +266,7 @@ void UIManager::SetupDockingLayout() {
     ImGui::DockBuilderFinish(dockspace_id);
 }
 
-void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, std::vector<ScriptComponent>& scripts, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, int activeEntityID) 
+void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, std::vector<ScriptComponent>& scripts, std::vector<EntityMetadata>& coldData, const std::vector<Slot>& slots, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, int activeEntityID) 
 {
     ImGuizmo::BeginFrame();
 
@@ -301,8 +302,8 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_NoCollapse);
     DrawWindowBackground(m_metalTexture);
 
-    if (activeEntityID != -1 && activeEntityID < (int)transforms.size()) {
-        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), "Entity [%d]", activeEntityID);
+    if (activeEntityID != -1 && activeEntityID < (int)transforms.size() && slots[activeEntityID].alive) {
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.5f, 1.0f), "%s [ID: %d]", coldData[activeEntityID].name.c_str(), activeEntityID);
         ImGui::SameLine();
         ImGui::TextDisabled("(Selected)");
 
@@ -313,6 +314,14 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             m_deleteRequestID = activeEntityID;
         }
         ImGui::PopStyleColor(2);
+
+        char nameBuf[64];
+        strncpy(nameBuf, coldData[activeEntityID].name.c_str(), sizeof(nameBuf));
+        nameBuf[sizeof(nameBuf) - 1] = '\0';
+        if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
+            coldData[activeEntityID].name = nameBuf;
+        }
+        ImGui::TextDisabled("UUID: 0x%016llX", (unsigned long long)coldData[activeEntityID].uuid);
 
         ImGui::Separator();
 
@@ -386,7 +395,16 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
 
             if (ImGui::CollapsingHeader("Script Component", ImGuiTreeNodeFlags_DefaultOpen)) {
                 if (hasScript) {
-                    const char* langStr = (script.Type == ScriptType::PYTHON) ? "[Python]" : "[C++]";
+                    const char* langStr = "";
+                    if (script.Type == ScriptType::CPP) {
+                        langStr = "[C++]";
+                    }
+                    else if (script.Type == ScriptType::LUA) {
+                        langStr = "[LUA]";
+                    }
+                    else {
+                        langStr = "[PYTHON]";
+                    }
                     ImVec4 langColor = (script.Type == ScriptType::PYTHON) 
                         ? ImVec4(0.2f, 0.8f, 1.0f, 1.0f) 
                         : ImVec4(1.0f, 0.6f, 0.2f, 1.0f);
@@ -509,6 +527,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     ImGui::Separator();
     
     for (size_t i = 0; i < transforms.size(); ++i) {
+        if (!slots[i].alive) continue;
         ImGui::PushID((int)i);
         
         char label[128];
@@ -516,13 +535,13 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         bool hasScript = (scripts.size() > i && scripts[i].Type != ScriptType::NONE);
 
         if (hasBrain && hasScript) {
-            snprintf(label, sizeof(label), "[%zu] Entity (%s | %s)", i, agents[i].AgentModule.c_str(), scripts[i].ScriptName.c_str());
+            snprintf(label, sizeof(label), "[%zu] %s (%s | %s)", i, coldData[i].name.c_str(), agents[i].AgentModule.c_str(), scripts[i].ScriptName.c_str());
         } else if (hasScript) {
-            snprintf(label, sizeof(label), "[%zu] Entity (Script: %s)", i, scripts[i].ScriptName.c_str());
+            snprintf(label, sizeof(label), "[%zu] %s (Script: %s)", i, coldData[i].name.c_str(), scripts[i].ScriptName.c_str());
         } else if (hasBrain) {
-            snprintf(label, sizeof(label), "[%zu] Entity (Brain: %s)", i, agents[i].AgentModule.c_str());
+            snprintf(label, sizeof(label), "[%zu] %s (Brain: %s)", i, coldData[i].name.c_str(), agents[i].AgentModule.c_str());
         } else {
-            snprintf(label, sizeof(label), "[%zu] Entity (Empty)", i);
+            snprintf(label, sizeof(label), "[%zu] %s", i, coldData[i].name.c_str());
         }
         
         // Highlight the text if its ID matches the activeEntityID from main.cpp
@@ -921,7 +940,12 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     }
     
     if (ImGui::BeginPopup("ViewportEntityMenu")) {
-        ImGui::Text("Entity ID: %d", activePopupID);
+        if (activePopupID >= 0 && (size_t)activePopupID < coldData.size() && slots[activePopupID].alive) {
+            ImGui::Text("%s [ID: %d]", coldData[activePopupID].name.c_str(), activePopupID);
+            ImGui::TextDisabled("UUID: 0x%016llX", (unsigned long long)coldData[activePopupID].uuid);
+        } else {
+            ImGui::Text("Entity ID: %d", activePopupID);
+        }
         ImGui::Separator();
         if (physics.size() > (size_t)activePopupID && activePopupID >= 0) {
             PhysicsComponent& phyComp = physics[activePopupID];

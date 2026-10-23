@@ -4,6 +4,51 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <string>
+#include <cstdint>
+#include <random>
+
+// Generational SlotKey for O(1) safe runtime handles without array shifting
+struct SlotKey {
+    uint32_t index = 0;
+    uint32_t generation = 1;
+
+    uint64_t ToRaw() const {
+        return (static_cast<uint64_t>(generation) << 32) | index;
+    }
+    static SlotKey FromRaw(uint64_t raw) {
+        return SlotKey{ static_cast<uint32_t>(raw & 0xFFFFFFFF), static_cast<uint32_t>(raw >> 32) };
+    }
+    bool operator==(const SlotKey& other) const { return index == other.index && generation == other.generation; }
+    bool operator!=(const SlotKey& other) const { return !(*this == other); }
+    explicit operator bool() const { return generation != 0; }
+};
+
+struct Slot {
+    uint32_t generation = 1;
+    bool alive = false;
+};
+
+// Cold Domain metadata (Authoring UUID, Decoupled Name)
+struct EntityMetadata {
+    uint64_t uuid = 0;
+    std::string name = "Entity";
+};
+
+inline uint64_t GenerateUUID() {
+    static std::random_device rd;
+    static std::mt19937_64 gen(rd());
+    static std::uniform_int_distribution<uint64_t> dis;
+    uint64_t val = dis(gen);
+    return (val == 0) ? 1 : val;
+}
+
+namespace std {
+    template<> struct hash<SlotKey> {
+        size_t operator()(const SlotKey& k) const noexcept {
+            return std::hash<uint64_t>()(k.ToRaw());
+        }
+    };
+}
 
 // Entity Component System(ECS) ----- > basically making a stride of all the necesssary data
 // what is a stride you may ask it is nothing but an array of different data bundeled together so that it makes it easier to fetch as it can be stored inside a cache
@@ -15,7 +60,7 @@ enum class Entity{INACTIVE, ACTIVE};
 enum class AgentMode{NONE, TRAINING, INFERENCE};
 enum class MeshType{MESH, SPHERE, CUBE, PYRAMID};
 enum class Rigidbody{YES, NO};
-enum class ScriptType{PYTHON, CPP, NONE};
+enum class ScriptType{PYTHON, CPP, LUA, NONE};
 enum class Script{DISABLED, ENABLED};
 
 struct AgentComponent{
@@ -52,9 +97,10 @@ struct ScriptComponent{
 // Physics System class which handle most of the physics related stuff
 class PhysicsSystem{
     public:
-        static void Update(std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, float dt){
+        static void Update(std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, const std::vector<Slot>& slots, float dt){
             // seq loop over the stride(clearing it out)
             for(size_t i=0; i<transforms.size(); i++){
+                if(!slots[i].alive) continue;
                 transforms[i].Position += physics[i].Velocity*dt;
                 
                 if(physics[i].Rigidbody == Rigidbody::YES){

@@ -21,6 +21,8 @@ public:
                 std::vector<PhysicsComponent>& physics, 
                 std::vector<AgentComponent>& agents,
                 std::vector<ScriptComponent>& scripts,
+                std::vector<EntityMetadata>& coldData,
+                const std::vector<Slot>& slots,
                 float framerate,
                 bool& cursorInViewport,
                 const glm::mat4& view,
