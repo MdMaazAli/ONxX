@@ -83,7 +83,7 @@ void LuaRunner::UnloadScript(SlotKey key){
     m_loadedScripts.erase(key);
 }
 
-void LuaRunner::Tick(SlotKey key, TransformComponent& transfom, PhysicsComponent& physcis, float dt) {
+void LuaRunner::Tick(SlotKey key, TransformComponent& transform, PhysicsComponent& physcis, float dt) {
     auto it = m_scriptEnvs.find(key);
     if (it == m_scriptEnvs.end()) return;
     
@@ -98,9 +98,13 @@ void LuaRunner::Tick(SlotKey key, TransformComponent& transfom, PhysicsComponent
 
     // < ---------- LUA ENTITY TABLE ---------- >
     lua_newtable(L); // arg1
-    lua_pushnumber(L, transfom.Position.x); lua_setfield(L, -2, "x");
-    lua_pushnumber(L, transfom.Position.y); lua_setfield(L, -2, "y");
-    lua_pushnumber(L, transfom.Position.z); lua_setfield(L, -2, "z");
+    lua_pushnumber(L, transform.Position.x); lua_setfield(L, -2, "x");
+    lua_pushnumber(L, transform.Position.y); lua_setfield(L, -2, "y");
+    lua_pushnumber(L, transform.Position.z); lua_setfield(L, -2, "z");
+
+    lua_pushnumber(L, transform.Size.x); lua_setfield(L, -2, "sx");
+    lua_pushnumber(L, transform.Size.y); lua_setfield(L, -2, "sy");
+    lua_pushnumber(L, transform.Size.z); lua_setfield(L, -2, "sz");
 
     lua_pushnumber(L, physcis.Velocity.x); lua_setfield(L, -2, "vx");
     lua_pushnumber(L, physcis.Velocity.y); lua_setfield(L, -2, "vy");
@@ -118,9 +122,13 @@ void LuaRunner::Tick(SlotKey key, TransformComponent& transfom, PhysicsComponent
     }
 
     // READING BACK VALUES AFTER UPDATE
-    lua_getfield(L, -1, "x");  transfom.Position.x = (float)lua_tonumber(L, -1); lua_pop(L, 1);
-    lua_getfield(L, -1, "y");  transfom.Position.y = (float)lua_tonumber(L, -1); lua_pop(L, 1);
-    lua_getfield(L, -1, "z");  transfom.Position.z = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, -1, "x");  transform.Position.x = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, -1, "y");  transform.Position.y = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, -1, "z");  transform.Position.z = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+    
+    lua_getfield(L, -1, "sx");  transform.Size.x = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, -1, "sy");  transform.Size.y = (float)lua_tonumber(L, -1); lua_pop(L, 1);
+    lua_getfield(L, -1, "sz");  transform.Size.z = (float)lua_tonumber(L, -1); lua_pop(L, 1);
 
     lua_getfield(L, -1, "vx"); physcis.Velocity.x  = (float)lua_tonumber(L, -1); lua_pop(L, 1);
     lua_getfield(L, -1, "vy"); physcis.Velocity.y  = (float)lua_tonumber(L, -1); lua_pop(L, 1);

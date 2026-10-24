@@ -266,9 +266,19 @@ void UIManager::SetupDockingLayout() {
     ImGui::DockBuilderFinish(dockspace_id);
 }
 
-void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, std::vector<ScriptComponent>& scripts, std::vector<EntityMetadata>& coldData, const std::vector<Slot>& slots, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, int activeEntityID) 
+void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<TransformComponent>& transforms, std::vector<PhysicsComponent>& physics, std::vector<AgentComponent>& agents, std::vector<ScriptComponent>& scripts, std::vector<EntityMetadata>& coldData, const std::vector<Slot>& slots, float framerate, bool& cursorInViewport, const glm::mat4& view, const glm::mat4& projection, uint64_t activeEntityUUID) 
 {
     ImGuizmo::BeginFrame();
+
+    int activeEntityID = -1;
+    if (activeEntityUUID != 0) {
+        for (size_t i = 0; i < coldData.size(); ++i) {
+            if (slots[i].alive && coldData[i].uuid == activeEntityUUID) {
+                activeEntityID = static_cast<int>(i);
+                break;
+            }
+        }
+    }
 
     m_hasNewDrop = false; // Reset event every frame
     m_hasNewClick = false; // Reset click every frame
@@ -311,7 +321,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.15f, 0.15f, 0.8f));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.7f, 0.2f, 0.2f, 0.9f));
         if (ImGui::Button("Delete", ImVec2(70, 0))) {
-            m_deleteRequestID = activeEntityID;
+            m_deleteRequestUUID = activeEntityUUID;
         }
         ImGui::PopStyleColor(2);
 
@@ -328,7 +338,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         // < ------------------- TRANSFORM ------------------- >
         if (ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::DragFloat3("Position", &transforms[activeEntityID].Position.x, 0.05f);
-            ImGui::DragFloat3("Size", &transforms[activeEntityID].Size.x, 0.05f, 0.01f, 100.0f);
+            ImGui::DragFloat3("Size", &transforms[activeEntityID].Size.x, 0.05f);
         }
 
         // < ------------------- RIGIDBODY ------------------- >
@@ -544,12 +554,11 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             snprintf(label, sizeof(label), "[%zu] %s", i, coldData[i].name.c_str());
         }
         
-        // Highlight the text if its ID matches the activeEntityID from main.cpp
-        bool isSelected = (activeEntityID == (int)i); 
+        bool isSelected = (activeEntityUUID != 0 && coldData[i].uuid == activeEntityUUID); 
         
         // If the user clicks this text, it returns TRUE for exactly 1 frame
         if (ImGui::Selectable(label, isSelected)) {
-            m_newlySelectedHierarchyID = (int)i; // Save this click to send to main.cpp!
+            m_newlySelectedHierarchyUUID = coldData[i].uuid;
         }
         
         // < --------------------- Right Click Context Menu for Hierarchy --------------------- >
@@ -620,7 +629,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Delete")) {
-                m_deleteRequestID = (int)i;
+                m_deleteRequestUUID = coldData[i].uuid;
             }
             ImGui::EndPopup();
         }
@@ -932,11 +941,21 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
     // ------------------------------------------------------------------------------------------------------------------------
     // ------------------------------------------------------------------------------------------------------------------------
 
-    static int activePopupID = -1;
-    if (m_popupEntityID != -1) {
-        activePopupID = m_popupEntityID;
+    static uint64_t activePopupUUID = 0;
+    if (m_popupEntityUUID != 0) {
+        activePopupUUID = m_popupEntityUUID;
         ImGui::OpenPopup("ViewportEntityMenu");
-        m_popupEntityID = -1;
+        m_popupEntityUUID = 0;
+    }
+
+    int activePopupID = -1;
+    if (activePopupUUID != 0) {
+        for (size_t i = 0; i < coldData.size(); ++i) {
+            if (slots[i].alive && coldData[i].uuid == activePopupUUID) {
+                activePopupID = static_cast<int>(i);
+                break;
+            }
+        }
     }
     
     if (ImGui::BeginPopup("ViewportEntityMenu")) {
@@ -1013,7 +1032,7 @@ void UIManager::Render(GLFWwindow* window, GLuint fboTextureId, std::vector<Tran
         }
         ImGui::Separator();
         if (ImGui::MenuItem("Delete")) {
-            m_deleteRequestID = activePopupID;
+            m_deleteRequestUUID = activePopupUUID;
         }
         ImGui::EndPopup();
     }
