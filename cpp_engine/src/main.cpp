@@ -26,6 +26,7 @@
 #include "Shader.h"
 #include "Camera.h"
 #include "SimpleMesh.h"
+#include "SimpleMesh2D.h"
 #include "Physics.h"
 #include "Collision.h"
 
@@ -224,7 +225,7 @@ int main() {
     // -------------------------------------------------------------------------------------------------------------------------
     // -------------------------------------------------------------------------------------------------------------------------
 
-    // Hot Simulation Domain (dense POD math)
+    // Hot Simulation Domain ( POD )
     std::vector<MeshComponent> meshes;
     std::vector<TransformComponent> transforms;
     std::vector<PhysicsComponent> physics;
@@ -339,7 +340,7 @@ int main() {
     
     float accTime = 0.0f,dt = 1.0/60.0f;
     
-    static int draggedEntityID = -1;
+    static uint64_t selectedUUID = 0;
 
     while(!glfwWindowShouldClose(window)){
         float currFrame = glfwGetTime();
@@ -428,7 +429,7 @@ int main() {
         // -------------------------------------------------------------------------------------------------------------------
 
         if (currState != EngineState::EDIT_MODE) {
-            
+            // ----------------------------------------------------------------------------------- > BUGS NEED TO FIX
             for (size_t i = 0; i < transforms.size(); ++i) {
                 if (!slots[i].alive) continue;
                 SlotKey key = { (uint32_t)i, slots[i].generation };
@@ -476,18 +477,21 @@ int main() {
             if(!slots[i].alive) continue;
             if(meshes[i].Mesh==MeshType::SPHERE){
                 glm::mat4 sphrModel = glm::mat4(1.0f);
+                sphrModel = glm::scale(sphrModel, transforms[i].Size);
                 sphrModel = glm::translate(sphrModel,transforms[i].Position);
                 initModel(sphereShader,sphrModel,view,projection,lightColor,lightPos);
                 sphrMesh.draw();
             }
             else if(meshes[i].Mesh==MeshType::CUBE){
                 glm::mat4 cubeModel = glm::mat4(1.0f);
+                cubeModel = glm::scale(cubeModel, transforms[i].Size);
                 cubeModel = glm::translate(cubeModel,transforms[i].Position);
                 initModel(sphereShader,cubeModel,view,projection,lightColor,lightPos);
                 cubeMesh.draw();
             }
             else if(meshes[i].Mesh==MeshType::PYRAMID){
                 glm::mat4 pyramidModel = glm::mat4(1.0f);
+                pyramidModel = glm::scale(pyramidModel, transforms[i].Size);
                 pyramidModel = glm::translate(pyramidModel,transforms[i].Position);
                 initModel(sphereShader,pyramidModel,view,projection,lightColor,lightPos);   
                 pyramidMesh.draw();
@@ -517,7 +521,7 @@ int main() {
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
         
-        uiManager.Render(window, fbo.textureId, transforms, physics, agents, scripts, coldData, slots, io.Framerate, cursorInViewport, view, projection, draggedEntityID);
+        uiManager.Render(window, fbo.textureId, transforms, physics, agents, scripts, coldData, slots, io.Framerate, cursorInViewport, view, projection, selectedUUID);
         ImGui::Render();
 
         // -------------------------------------------------------------------------------------------------------------------    
@@ -525,29 +529,42 @@ int main() {
         // -------------------------------------------------------------------------------------------------------------------
 
         // < ------- ACTIVE/INACTIVE ENTITY HANDLER ------ >
-        int hierarchyClickID = uiManager.ConsumeHierarchySelection();
-        if (hierarchyClickID != -1 && slots[hierarchyClickID].alive) {
-            // Turn off the old entity if there was one
-            if (draggedEntityID != -1 && slots[draggedEntityID].alive) {
-                transforms[draggedEntityID].Is = Entity::INACTIVE;
+        uint64_t hierarchyClickUUID = uiManager.ConsumeHierarchySelection();
+        if (hierarchyClickUUID != 0) {
+            auto it = uuidToSlotKey.find(hierarchyClickUUID);
+            if (it != uuidToSlotKey.end() && slots[it->second.index].alive) {
+                // Turn off the old entity if there was one
+                if (selectedUUID != 0) {
+                    auto oldIt = uuidToSlotKey.find(selectedUUID);
+                    if (oldIt != uuidToSlotKey.end() && slots[oldIt->second.index].alive) {
+                        transforms[oldIt->second.index].Is = Entity::INACTIVE;
+                    }
+                }
+                
+                // Turn on the new entity
+                selectedUUID = hierarchyClickUUID;
+                transforms[it->second.index].Is = Entity::ACTIVE;
+                
+                cout << "HIERARCHY SELECTED ENTITY UUID: 0x" << std::hex << selectedUUID << std::dec << endl;
             }
-            
-            // Turn on the new entity
-            draggedEntityID = hierarchyClickID;
-            transforms[draggedEntityID].Is = Entity::ACTIVE;
-            
-            cout << "HIERARCHY SELECTED ENTITY ID: " << draggedEntityID << endl;
         }
         
         // < ------- DELETE ENTITY HANDLER ------ >
-        int deleteID = uiManager.ConsumeDeleteRequest();
-        if(deleteID >= 0 && deleteID < (int)transforms.size() && slots[deleteID].alive){
-            SlotKey key = { (uint32_t)deleteID, slots[deleteID].generation };
-            luaRunner.UnloadScript(key);
-            FreeEntity((uint32_t)deleteID);
-            draggedEntityID = -1;
+        uint64_t deleteUUID = uiManager.ConsumeDeleteRequest();
+        if (deleteUUID != 0) {
+            auto it = uuidToSlotKey.find(deleteUUID);
+            if (it != uuidToSlotKey.end()) {
+                SlotKey key = it->second;
+                if (slots[key.index].alive && slots[key.index].generation == key.generation) {
+                    luaRunner.UnloadScript(key);
+                    FreeEntity(key.index);
+                    if (selectedUUID == deleteUUID) {
+                        selectedUUID = 0;
+                    }
 
-            std::cout<<"[DELETE] ENTITY "<<deleteID<<" FREED (NO SHIFTING)"<<endl;
+                    std::cout << "[DELETE] ENTITY UUID: 0x" << std::hex << deleteUUID << std::dec << " FREED (NO SHIFTING)" << endl;
+                }
+            }
         }
 
         // -------------------------------------------------------------------------------------------------------------------    
@@ -585,18 +602,21 @@ int main() {
                     }
                 }
                 
-                if (draggedEntityID != -1 && draggedEntityID < (int)transforms.size() && slots[draggedEntityID].alive) {
-                    transforms[draggedEntityID].Is = Entity::INACTIVE;
+                if (selectedUUID != 0) {
+                    auto oldIt = uuidToSlotKey.find(selectedUUID);
+                    if (oldIt != uuidToSlotKey.end() && slots[oldIt->second.index].alive) {
+                        transforms[oldIt->second.index].Is = Entity::INACTIVE;
+                    }
                 }
 
                 if(closestEntityID!=-1 && slots[closestEntityID].alive){
                     // < ----- ACTIVE ENTITY ID ----- >
-                    draggedEntityID = closestEntityID;
-                    transforms[draggedEntityID].Is = Entity::ACTIVE;
-                    cout<<"ENTITY ID:"<<closestEntityID<<" ACTIVE "<<"SELECTED AT A DISTANCE OF:"<<closestDistance<<endl;
+                    selectedUUID = coldData[closestEntityID].uuid;
+                    transforms[closestEntityID].Is = Entity::ACTIVE;
+                    cout<<"ENTITY UUID: 0x"<<std::hex<<selectedUUID<<std::dec<<" ACTIVE "<<"SELECTED AT A DISTANCE OF:"<<closestDistance<<endl;
                 }
                 else{
-                    draggedEntityID = -1; // Deselect when clicking empty space
+                    selectedUUID = 0; // Deselect when clicking empty space
                     cout<<"VOID"<<endl;
                 }
             
@@ -630,9 +650,9 @@ int main() {
                     }
                 }
 
-                if (closestEntityID != -1) {
-                    if (closestEntityID == draggedEntityID) {
-                        uiManager.OpenEntityPopup(closestEntityID);
+                if (closestEntityID != -1 && slots[closestEntityID].alive) {
+                    if (coldData[closestEntityID].uuid == selectedUUID) {
+                        uiManager.OpenEntityPopup(selectedUUID);
                     }
                 }
             }
@@ -685,7 +705,7 @@ int main() {
 
         }
         else{
-            draggedEntityID = -1;
+            selectedUUID = 0;
         }
 
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

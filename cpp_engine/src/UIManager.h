@@ -27,22 +27,20 @@ public:
                 bool& cursorInViewport,
                 const glm::mat4& view,
                 const glm::mat4& projection,
-                int activeEntityID);
+                uint64_t activeEntityUUID);
 
     EngineState GetState() const { return m_state; }
 
-    // Add a getter that main.cpp can call to check for 2D clicks
-    int ConsumeHierarchySelection() { 
-        int id = m_newlySelectedHierarchyID; 
-        m_newlySelectedHierarchyID = -1; // Reset it immediately so it only fires once
-        return id; 
+    uint64_t ConsumeHierarchySelection() { 
+        uint64_t uuid = m_newlySelectedHierarchyUUID; 
+        m_newlySelectedHierarchyUUID = 0; 
+        return uuid; 
     }
     
-    // Getter for deleteing an entity
-    int ConsumeDeleteRequest() { 
-        int id = m_deleteRequestID; 
-        m_deleteRequestID = -1; // Reset it immediately so it only fires once
-        return id; 
+    uint64_t ConsumeDeleteRequest() { 
+        uint64_t uuid = m_deleteRequestUUID; 
+        m_deleteRequestUUID = 0; 
+        return uuid; 
     }
     
     // --- [NEW] Drag & Drop Event Outputs for main.cpp ---
@@ -57,7 +55,7 @@ public:
     glm::vec2 GetRightClickNDC() const { return m_rightClickNDC; }
     
     // --- [NEW] Viewport Popup trigger ---
-    void OpenEntityPopup(int entityID) { m_popupEntityID = entityID; }
+    void OpenEntityPopup(uint64_t entityUUID) { m_popupEntityUUID = entityUUID; }
 
 private:
     void SetupDockingLayout();
@@ -71,8 +69,8 @@ private:
     GLuint m_metalTexture;
     EngineState m_state;
 
-    int m_newlySelectedHierarchyID = -1;
-    int m_deleteRequestID = -1;
+    uint64_t m_newlySelectedHierarchyUUID = 0;
+    uint64_t m_deleteRequestUUID = 0;
     
     // Drop State
     bool m_hasNewDrop = false;
@@ -86,5 +84,5 @@ private:
     glm::vec2 m_rightClickNDC = glm::vec2(0.0f);
     
     // Popup State
-    int m_popupEntityID = -1;
+    uint64_t m_popupEntityUUID = 0;
 };
