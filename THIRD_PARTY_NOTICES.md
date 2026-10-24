@@ -5,16 +5,28 @@ The **xONxX Engine** (*eXtensive Open Noumenal eXploration & eXperimentation*) b
 ---
 
 ## Table of Contents
+
+### C++ Engine Core (`cpp_engine/`)
 1. [Dear ImGui](#1-dear-imgui) (MIT)
 2. [ImGuizmo](#2-imguizmo) (MIT)
 3. [GLM (OpenGL Mathematics)](#3-glm-opengl-mathematics) (MIT / Happy Bunny)
 4. [LuaJIT & Lua](#4-luajit--lua) (MIT)
-5. [ZeroMQ (libzmq & cppzmq)](#5-zeromq-libzmq--cppzmq) (MPL 2.0)
+5. [ZeroMQ](#5-zeromq)
+   - [5a. libzmq (Core C Library)](#5a-libzmq-core-c-library) (MPL 2.0)
+   - [5b. cppzmq (C++ Header-Only Binding)](#5b-cppzmq-c-header-only-binding) (MIT)
 6. [FlatBuffers](#6-flatbuffers) (Apache 2.0)
 7. [GLFW](#7-glfw) (zlib/libpng)
-8. [stb_image](#8-stb_image) (Public Domain / MIT)
+8. [stb_image](#8-stb_image) (MIT / Public Domain Dual-License)
 9. [libsodium](#9-libsodium) (ISC)
-10. [GLAD](#10-glad) (Public Domain / MIT / Apache 2.0)
+10. [GLAD & Khronos Platform Headers](#10-glad--khronos-platform-headers) (Public Domain / MIT & Apache 2.0)
+
+### Python Subsystem & Monorepo (`notebooks/RL/`, `python_api/`)
+11. [Python Runtime Dependencies](#11-python-runtime-dependencies)
+   - [PyZMQ](#11a-pyzmq) (BSD 3-Clause)
+   - [FlatBuffers Python Library](#11b-flatbuffers-python-library) (Apache 2.0)
+   - [NumPy](#11c-numpy) (BSD 3-Clause)
+   - [PyTorch](#11d-pytorch) (BSD 3-Clause)
+   - [TensorFlow / Keras](#11e-tensorflow--keras) (Apache 2.0)
 
 ---
 
@@ -145,8 +157,10 @@ THE SOFTWARE.
 
 ---
 
-## 5. ZeroMQ (libzmq & cppzmq)
-- **Source**: `cpp_engine/src/zmq.h`, `zmq.hpp`, `cpp_engine/libzmq.dll`
+## 5. ZeroMQ
+
+### 5a. libzmq (Core C Library)
+- **Source**: `cpp_engine/src/zmq.h`, `cpp_engine/libzmq.dll`, `cpp_engine/libzmq-v141-mt-4_3_4.dll`
 - **Author**: iMatix Corporation and ZeroMQ contributors
 - **URL**: https://zeromq.org / https://github.com/zeromq/libzmq
 - **License**: Mozilla Public License Version 2.0 (MPL 2.0)
@@ -155,15 +169,43 @@ THE SOFTWARE.
 Mozilla Public License Version 2.0
 ==================================
 
-1. Definitions
---------------
-...
-Full license text available at: https://www.mozilla.org/en-US/MPL/2.0/
-
 libzmq is licensed under the Mozilla Public License 2.0 (MPL-2.0).
-ZeroMQ is dynamically linked via `libzmq.dll`. Your use of xONxX does
-not modify the source of ZeroMQ itself. If you modify libzmq source code,
+ZeroMQ is dynamically linked via `libzmq.dll`. The use of xONxX does
+not modify the source of libzmq itself. If you modify libzmq source code,
 the MPL-2.0 requires you to make those modifications available.
+
+Full license text available at: https://www.mozilla.org/en-US/MPL/2.0/
+```
+
+### 5b. cppzmq (C++ Header-Only Binding)
+- **Source**: `cpp_engine/src/zmq.hpp`
+- **Author**: ZeroMQ Community and contributors
+- **URL**: https://github.com/zeromq/cppzmq
+- **License**: MIT License
+
+```
+Copyright (c) 2016-2017 ZeroMQ community
+Copyright (c) 2009-2011 250bpm s.r.o.
+Copyright (c) 2011 Botond Ballo
+Copyright (c) 2007-2009 iMatix Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
 ```
 
 ---
@@ -227,12 +269,47 @@ freely, subject to the following restrictions:
 - **Source**: `cpp_engine/include/stb_image.h`
 - **Author**: Sean Barrett
 - **URL**: https://github.com/nothings/stb
-- **License**: MIT License / Public Domain (Dual-Licensed)
+- **License**: Dual-Licensed under MIT License or Public Domain (Unlicense)
 
 ```
-This software is dual-licensed to the public domain and under the following
-license: you are granted a perpetual, irrevocable license to copy, modify,
-publish, and distribute this file as you see fit.
+This software is available under 2 licenses -- choose whichever you prefer.
+------------------------------------------------------------------------------
+ALTERNATIVE A - MIT License
+Copyright (c) 2017 Sean Barrett
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+------------------------------------------------------------------------------
+ALTERNATIVE B - Public Domain (www.unlicense.org)
+This is free and unencumbered software released into the public domain.
+Anyone is free to copy, modify, publish, use, compile, sell, or distribute this
+software, either in source code form or as a compiled binary, for any purpose,
+commercial or non-commercial, and by any means.
+In jurisdictions that recognize copyright laws, the author or authors of this
+software dedicate any and all copyright interest in the software to the public
+domain. We make this dedication for the benefit of the public at large and to
+the detriment of our heirs and successors. We intend this dedication to be an
+overt act of relinquishment in perpetuity of all present and future rights to
+this software under copyright law.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+------------------------------------------------------------------------------
 ```
 
 ---
@@ -264,8 +341,73 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ---
 
-## 10. GLAD (OpenGL Loader)
-- **Source**: `cpp_engine/src/glad.c`
+## 10. GLAD & Khronos Platform Headers
+- **Source**: `cpp_engine/src/glad.c`, `cpp_engine/include/glad/glad.h`, `cpp_engine/include/KHR/khrplatform.h`
 - **Generator**: Dav1dde (https://glad.dav1d.de/)
-- **Specification**: Khronos Group
-- **License**: Public Domain / MIT
+- **Specifications & Platform Headers**: The Khronos Group Inc.
+- **License**: 
+  - GLAD loader code by Dav1dde is **Public Domain (CC0) / MIT**.
+  - Bundled Khronos specification headers (`khrplatform.h`, `glad.h`) are **Copyright (c) 2008-2018 The Khronos Group Inc.** under the Khronos Permission Notice and the **Apache License, Version 2.0**.
+
+```
+Copyright (c) 2008-2018 The Khronos Group Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and/or associated documentation files (the
+"Materials"), to deal in the Materials without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Materials, and to
+permit persons to whom the Materials are furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Materials.
+
+THE MATERIALS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+MATERIALS OR THE USE OR OTHER DEALINGS IN THE MATERIALS.
+```
+
+Khronos Registry components and Apache License 2.0 terms:
+```
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+```
+
+---
+
+## 11. Python Runtime Dependencies
+
+The **xONxX** project contains Python reinforcement learning training environments, FlatBuffers binary IPC consumers, and notebooks (`notebooks/RL/`, `python_api/`). The following open-source packages are used in the Python environment:
+
+### 11a. PyZMQ
+- **URL**: https://github.com/zeromq/pyzmq
+- **Copyright**: Copyright (c) 2009-present PyZMQ Developers
+- **License**: Modified BSD License (BSD 3-Clause) / LGPL
+
+### 11b. FlatBuffers Python Library
+- **URL**: https://github.com/google/flatbuffers
+- **Copyright**: Copyright 2014-present Google LLC
+- **License**: Apache License, Version 2.0
+
+### 11c. NumPy
+- **URL**: https://numpy.org
+- **Copyright**: Copyright (c) 2005-present NumPy Developers
+- **License**: BSD 3-Clause License
+
+### 11d. PyTorch
+- **URL**: https://pytorch.org
+- **Copyright**: Copyright (c) 2016-present Meta Platforms, Inc. and affiliates
+- **License**: BSD 3-Clause License
+
+### 11e. TensorFlow / Keras
+- **URL**: https://www.tensorflow.org
+- **Copyright**: Copyright 2015-present The TensorFlow Authors
+- **License**: Apache License, Version 2.0
